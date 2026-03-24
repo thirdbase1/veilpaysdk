@@ -105,4 +105,4 @@ console.log("Is Paid Sufficiently?", status.isPaid);
 ---
 
 ## 📜 Contract ABI
-*(To get the full ABI for your frontend, compile the project using `npx hardhat compile` and copy the JSON array from `artifacts/contracts/BlindPayEscrow.sol/BlindPayEscrow.json`)*
+The full compiled ABI for this contract is now saved in the root folder as `BlindPayEscrowABI.json`. You can import this directly into your frontend and backend projects when instantiating the `ethers.Contract`.
