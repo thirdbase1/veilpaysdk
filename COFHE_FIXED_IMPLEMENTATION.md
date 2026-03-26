@@ -64,6 +64,8 @@ export async function POST(req: Request) {
     const { requestId, actualAmountPaid } = await req.json();
 
     const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
+    // CRITICAL: The backend wallet MUST have the AUTHORIZED_BACKEND private key
+    // to pass the 'onlyBackend' modifier in the contract.
     const wallet = new ethers.Wallet(process.env.BACKEND_PRIVATE_KEY, provider);
 
     const veilPay = new VeilPayContract(CONTRACT_ADDRESS, ABI, wallet);
