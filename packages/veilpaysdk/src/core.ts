@@ -1,4 +1,4 @@
-import { CofheClient } from "@cofhe/sdk";
+import { CofhesdkClient } from "@cofhe/sdk";
 
 export interface CoFHEStruct {
   ctHash: string | bigint;
@@ -16,7 +16,7 @@ export interface CoFHEStruct {
  * 4. Validation of contract-ready structs
  */
 export class VeilPayCoFHE {
-  private client: CofheClient;
+  private client: CofhesdkClient;
   private isReady = false;
   private initPromise: Promise<void> | null = null;
 
@@ -25,7 +25,7 @@ export class VeilPayCoFHE {
     const isServer = typeof window === "undefined";
     const storageOptions = isServer ? this.getMemoryStorage() : undefined;
 
-    this.client = new CofheClient({
+    this.client = new CofhesdkClient({
       network,
       fheKeyStorage: storageOptions,
     });
