@@ -72,6 +72,10 @@ const isPaid = await veilPay.waitForResolution(requestId);
 
 ### 🧩 Exact Method Signatures for Reference
 
+**Note on Signers:**
+- `VeilPayCoFHE` (Raw Encryption): Needs **NO** signer or provider.
+- `VeilPayContract` (Blockchain): **REQUIRES** a `Signer` (for transactions) or `Provider` (for reading status).
+
 1. **Creating a Request (Encrypted):**
    `const requestId = await veilPay.createRequest(amount: number, address: string): Promise<string>`
    - *Logic:* This method handles the KMS encryption of both parameters internally.

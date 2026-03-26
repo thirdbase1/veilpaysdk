@@ -94,6 +94,11 @@ export async function POST(req: Request) {
 ### Should I encrypt on the Frontend or Backend?
 **Frontend.** For maximum privacy, you should encrypt the payment amount on the frontend. This ensures the plaintext price never leaves the user's machine. The backend only needs to encrypt during the payment verification step.
 
+### Does the SDK need a Signer for all operations?
+**No.**
+- **Raw Encryption:** If you use the `VeilPayCoFHE` class directly, you do **not** need to pass a signer or provider.
+- **Contract Calls:** If you use the `VeilPayContract` wrapper, you **must** pass a `signerOrProvider` in the constructor.
+
 ---
 
 ## 🛡️ Security & Keys
