@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { VeilPayCoFHE, CoFHEStruct } from './core';
 
 /**
- * CONTRACT-READY WRAPPER for VeilPay Escrow (CoFHE Sepolia)
+ * CONTRACT-READY WRAPPER for BlindPay Escrow (CoFHE Sepolia)
  * Handles:
  * 1. Automatic FHE Encryption of amounts and addresses.
  * 2. Proper contract submission to standard Sepolia.

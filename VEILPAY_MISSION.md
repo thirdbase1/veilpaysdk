@@ -23,7 +23,7 @@ Since the blockchain is "blind," you cannot search for payments by merchant addr
 
 ### 1. Creation (Frontend)
 - **Action:** User fills in "20$" and "Merchant Address."
-- **SDK:** `veilPay.createRequest(20.00, address)` encrypts the data and submits to the `VeilPayEscrow` contract.
+- **SDK:** `veilPay.createRequest(20.00, address)` encrypts the data and submits to the `BlindPayEscrow` contract.
 - **Event:** The contract emits `RequestCreated(requestId)`.
 - **Database Save:** Your site captures this `requestId` and saves it to your database:
   ```json
