@@ -4,11 +4,8 @@ This document provides instructions on how to integrate the newly built `veilpay
 
 ## 🚀 1. Installation
 
-You can install the SDK from your local `packages/veilpaysdk` directory into your main project.
-
 ```bash
-# In your main project directory
-npm install ./packages/veilpaysdk
+npm install veilpaysdk
 ```
 
 ---
@@ -56,7 +53,7 @@ export default function CreatePage() {
 
 ## ⚙️ 3. Backend: Automated Payment Submission
 
-The SDK automatically mocks `fheKeyStorage` to prevent server-side crashes.
+The SDK automatically mocks `fheKeyStorage` to prevent server-side crashes in Node.js/Next.js routes.
 
 ```typescript
 // /app/api/cofhe/submit-payment/route.ts
@@ -75,11 +72,12 @@ export async function POST(req: Request) {
     await veilPay.submitPayment(requestId, actualAmountPaid);
 
     // 2. Poll for the Coprocessor result (Asynchronous Resolution)
-    // This waits for the Fhenix Coprocessor to provide the result.
+    // This waits for the Fhenix Coprocessor to provide the result on Sepolia.
+    // It will automatically call resolvePayment() for you when ready.
     const isPaidSufficiently = await veilPay.waitForResolution(requestId);
 
     if (isPaidSufficiently) {
-        // Update database SET status = 'paid'
+        // Success: Update your database SET status = 'paid'
     }
 
     return Response.json({ success: true, isPaid: isPaidSufficiently });

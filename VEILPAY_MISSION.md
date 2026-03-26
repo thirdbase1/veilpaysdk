@@ -9,11 +9,17 @@ On standard blockchains like Ethereum or Sepolia, **Privacy is impossible.**
 3.  **MEV & Frontrunning:** Public price data allows bots to frontrun or exploit market activity.
 
 ### ✅ The Solution: VeilPay
-VeilPay uses Fhenix CoFHE to create "Blind Invoices."
-- **Encrypted Amounts:** The requested price is encrypted via CoFHE KMS before it ever hits the blockchain.
-- **Encrypted Merchant Address:** The identity of the receiver is hidden on-chain.
+VeilPay uses Fhenix CoFHE to create "Blind Invoices" that leverage **State Privacy.**
+
+- **Encrypted Amounts (`euint128`):** The requested price is encrypted via CoFHE KMS before it ever hits the blockchain. No one can see your invoice's total value.
+- **Encrypted Merchant Identity (`eaddress`):** While the *transaction sender* (`msg.sender`) is public on Sepolia, the *merchant's address* stored inside the contract is encrypted. This means an observer cannot easily scrape the contract to find every invoice ever sent to a specific merchant.
 - **On-Chain Math:** When a payment is submitted, the contract calculates `FHE.gte(submitted, required)` *inside the encryption*.
 - **Asynchronous Resolution:** The Fhenix Coprocessor solves the math off-chain and returns only the boolean "SUCCESS" or "FAILURE" to the contract.
+
+### 🛡️ A Note on Privacy (State vs. Transaction)
+In its current form on Sepolia, **VeilPay provides State Privacy.**
+1.  **Public:** The address of the person *submitting* the payment (Payer) is visible in the transaction log.
+2.  **Private:** The *target price* of the invoice and the *internal mapping* of the merchant's wallet are protected by FHE.
 
 ---
 
