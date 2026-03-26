@@ -93,7 +93,17 @@ export async function POST(req: Request) {
 
 ---
 
+## 🛡️ Security & Keys
+
+- **Frontend:** Use `ethers.BrowserProvider` to let users sign transactions with their own wallets (MetaMask, Rabby, etc.).
+- **Backend:** You **must** provide a Private Key via `ethers.Wallet`. This is required to authorize transactions (e.g., `submitPayment`) and pay for gas.
+- **Privacy:** Never hardcode private keys. Use environment variables (`.env`).
+
 ## 📅 Changelog
+
+### v1.0.4
+- **Security:** Added explicit documentation for backend private key requirements and security best practices.
+- **Improved:** Better internal documentation for `BlindPayContract` signer requirements.
 
 ### v1.0.3
 - **Fixed:** Added detailed console logging for all on-chain transactions.
