@@ -130,6 +130,34 @@ export async function POST(req: Request) {
 
 ---
 
+## 📖 API Reference
+
+### 1. Create a Payment Request (Encrypted)
+**Method:** `veilPay.createRequest(amount: number, merchantAddress: string, expirySeconds?: number): Promise<string>`
+
+- **Encryption:** Automatically encrypts the `amount` into an `InEuint128` struct and the `merchantAddress` into an `InEaddress` struct using the Fhenix CoFHE KMS.
+- **Return:** Returns the `requestId` (`bytes32` string) emitted by the smart contract. Use this ID to track the payment in your database.
+
+### 2. Handle Asynchronous Resolution
+**Method:** `veilPay.waitForResolution(requestId: string, timeoutMs?: number): Promise<boolean>`
+
+- **Logic:** Since CoFHE decryption on Sepolia is asynchronous, this method listens for the `PaymentResolved` event and polls the contract's `isResolved` state.
+- **Return:** Returns `true` if the payment was sufficient (decrypted result), or `false` if underpaid. Throws a `VeilPayContractError` on timeout.
+
+### 3. Encryption Data Structure
+**Interface:** `CoFHEStruct`
+
+The SDK's encryption methods return this exact data structure required by the `BlindPayEscrow` smart contract:
+
+```typescript
+export interface CoFHEStruct {
+  ctHash: string | bigint; // The hash of the ciphertext
+  securityZone: number;    // Fhenix security zone
+  utype: number;           // The FHE type identifier (e.g., uint128)
+  signature: string;       // The KMS-generated cryptographic signature
+}
+```
+
 ## 🤝 Contribution
 
 This SDK is built for the Fhenix Buildathon. Pull requests and issues are welcome!

@@ -70,6 +70,27 @@ const isPaid = await veilPay.waitForResolution(requestId);
 
 ---
 
+### 🧩 Exact Method Signatures for Reference
+
+1. **Creating a Request (Encrypted):**
+   `const requestId = await veilPay.createRequest(amount: number, address: string): Promise<string>`
+   - *Logic:* This method handles the KMS encryption of both parameters internally.
+
+2. **Handling Resolution (Async):**
+   `const isPaid = await veilPay.waitForResolution(requestId: string): Promise<boolean>`
+   - *Logic:* This handles the 20s Coprocessor delay and returns the decrypted result.
+
+3. **Encryption Output Data Structure:**
+   Encryption methods return the `CoFHEStruct` required by the contract:
+   ```typescript
+   {
+     ctHash: string | bigint;
+     securityZone: number;
+     utype: number;
+     signature: string;
+   }
+   ```
+
 ### 🛠 INSTRUCTIONS FOR AI ASSISTANTS:
 1.  **Scan** the codebase for any `import ... from "@cofhe/sdk"` or `fhenixjs`.
 2.  **Delete** those imports and their associated initialization logic.
