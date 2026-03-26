@@ -47,5 +47,6 @@ npm install veilpaysdk
 ---
 
 ## 🛠 Troubleshooting for Termux
+- **`You cannot publish over previously published versions`:** This happens if the version in `package.json` was already used. Open `package.json` and increase the version (e.g., from `1.0.4` to `1.0.5`).
 - **`npm install` fails:** If it hangs, make sure your internet connection is stable.
 - **NPM Login Link:** If NPM gives you a link to follow, copy it and open it in Chrome on your phone to complete the verification.

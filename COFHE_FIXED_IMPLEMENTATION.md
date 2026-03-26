@@ -63,10 +63,15 @@ import { ethers } from "ethers";
 export async function POST(req: Request) {
     const { requestId, actualAmountPaid } = await req.json();
 
+    // 1. Initialize ethers provider and wallet from environment variables
     const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
-    // CRITICAL: The backend wallet MUST have the AUTHORIZED_BACKEND private key
-    // to pass the 'onlyBackend' modifier in the contract.
-    const wallet = new ethers.Wallet(process.env.BACKEND_PRIVATE_KEY, provider);
+
+    // CRITICAL: The private key should be stored in a .env file as BACKEND_PRIVATE_KEY
+    // The wallet must correspond to the AUTHORIZED_BACKEND address in the contract.
+    const privateKey = process.env.BACKEND_PRIVATE_KEY;
+    if (!privateKey) throw new Error("BACKEND_PRIVATE_KEY is not defined in .env");
+
+    const wallet = new ethers.Wallet(privateKey, provider);
 
     const veilPay = new VeilPayContract(CONTRACT_ADDRESS, ABI, wallet);
 
