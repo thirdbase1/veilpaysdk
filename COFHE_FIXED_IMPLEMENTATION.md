@@ -122,8 +122,68 @@ contract.on("PaymentSubmitted", async (requestId) => {
 
 ---
 
+## 4. Frontend: Fixing "CoFHE client not ready"
+**File:** `/app/(pages)/create/page.tsx` or `/hooks/useCofhe.ts`
+
+The "CoFHE client not ready" error occurs because the SDK needs to initialize asynchronously (loading WASM or keys) before you can call `.encrypt()`. You must `await client.init()` or track the initialization state.
+
+### Using a React Hook (Recommended)
+```typescript
+import { useState, useEffect } from 'react';
+import { CofheClient } from "@cofhe/sdk";
+
+export function useCofhe() {
+    const [client, setClient] = useState<CofheClient | null>(null);
+    const [isReady, setIsReady] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const init = async () => {
+            try {
+                const cofhe = new CofheClient({ network: "sepolia" });
+                // CRITICAL: Must await the internal initialization
+                if (typeof (cofhe as any).init === 'function') {
+                    await (cofhe as any).init();
+                }
+                setClient(cofhe);
+                setIsReady(true);
+            } catch (err: any) {
+                console.error("CoFHE Init Failed:", err);
+                setError(err.message);
+            }
+        };
+        init();
+    }, []);
+
+    return { client, isReady, error };
+}
+
+// Usage in your component:
+// const { client, isReady } = useCofhe();
+// if (!isReady) return <button disabled>Initializing CoFHE...</button>;
+```
+
+### Manual Async Initialization
+If you are initializing the client directly inside a function, ensure you await it:
+```typescript
+async function handleCreateRequest() {
+    const client = new CofheClient({ network: "sepolia" });
+
+    // Ensure initialization is complete
+    if (typeof (client as any).init === 'function') {
+        await (client as any).init();
+    }
+
+    const encryptedAmount = await client.encrypt(amount, "uint128");
+    // ... rest of your logic
+}
+```
+
+---
+
 ## Summary Checklist
 - [ ] Fixed `page.tsx` validation to include `utype` and fix the `undefined` logic error.
 - [ ] Added `memoryStorage` mock to `cofheServer.ts` initialization.
+- [ ] Added `await client.init()` or a `useCofhe` hook to prevent "client not ready" errors.
 - [ ] Removed `resolvePayment` from the `submit-payment` API route to respect asynchronous decryption.
 - [ ] Implemented an event listener or delayed job to handle payment resolution.
