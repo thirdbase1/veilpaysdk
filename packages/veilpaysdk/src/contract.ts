@@ -1,5 +1,6 @@
 import { ethers } from 'ethers';
 import { VeilPayCoFHE, CoFHEStruct } from './core';
+import { VeilPayContractError, VeilPayValidationError } from './errors';
 
 /**
  * CONTRACT-READY WRAPPER for BlindPay Escrow (CoFHE Sepolia)
@@ -41,6 +42,13 @@ export class VeilPayContract {
         merchantAddress: string,
         expirySeconds: number = 86400
     ): Promise<string> {
+        if (!ethers.isAddress(merchantAddress)) {
+            throw new VeilPayValidationError(`Invalid merchant address: ${merchantAddress}`);
+        }
+        if (amount <= 0) {
+            throw new VeilPayValidationError("Amount must be greater than 0");
+        }
+
         await this.init();
 
         // 1. Encrypt via KMS SDK
@@ -50,34 +58,68 @@ export class VeilPayContract {
         const expiryTimestamp = Math.floor(Date.now() / 1000) + expirySeconds;
 
         // 2. Call Sepolia Contract with the required Tuples/Structs
-        const tx = await this.contract.createRequest(
-            encryptedAmount,
-            encryptedMerchant,
-            expiryTimestamp
-        );
-        const receipt = await tx.wait();
+        try {
+            console.log("[VeilPay SDK] Creating request on-chain...");
+            const tx = await this.contract.createRequest(
+                encryptedAmount,
+                encryptedMerchant,
+                expiryTimestamp
+            );
+            const receipt = await tx.wait();
 
-        // 3. Extract requestId from logs (RequestCreated event)
-        const event = receipt.logs.find((log: any) => log.fragment?.name === 'RequestCreated');
-        if (!event) throw new Error("[VeilPay SDK] Transaction failed to emit RequestCreated event.");
+            // 3. Extract requestId from logs (RequestCreated event)
+            const event = receipt.logs.find((log: any) => log.fragment?.name === 'RequestCreated');
+            if (!event) {
+                console.error("[VeilPay SDK] RequestCreated event not found in logs.");
+                throw new VeilPayContractError("Transaction succeeded but no RequestCreated event was emitted.");
+            }
 
-        return event.args[0]; // requestId
+            const requestId = event.args[0];
+            console.log(`[VeilPay SDK] Request created successfully: ${requestId}`);
+            return requestId;
+        } catch (error: any) {
+            console.error("[VeilPay SDK] createRequest Error:", error);
+            throw new VeilPayContractError(`createRequest failed: ${error.message}`, error.hash);
+        }
     }
 
     /**
      * Submits an actual paid amount (USDC) from the Backend/Oracle.
      */
     async submitPayment(requestId: string, actualAmount: number): Promise<string> {
+        if (actualAmount <= 0) {
+            throw new VeilPayValidationError("Actual amount must be greater than 0");
+        }
+
         await this.init();
 
         // 1. Encrypt via KMS
         const encryptedPaidAmount = await this.sdk.encryptAmount(actualAmount);
 
         // 2. Submit to the contract
-        const tx = await this.contract.submitPayment(requestId, encryptedPaidAmount);
-        const receipt = await tx.wait();
+        try {
+            console.log(`[VeilPay SDK] Submitting payment for request: ${requestId}`);
+            const tx = await this.contract.submitPayment(requestId, encryptedPaidAmount);
+            const receipt = await tx.wait();
+            console.log(`[VeilPay SDK] Payment submitted in tx: ${receipt.hash}`);
+            return receipt.hash;
+        } catch (error: any) {
+            console.error("[VeilPay SDK] submitPayment Error:", error);
+            throw new VeilPayContractError(`submitPayment failed: ${error.message}`, error.hash);
+        }
+    }
 
-        return receipt.hash;
+    /**
+     * Returns the full status of a payment request.
+     */
+    async getPaymentStatus(requestId: string) {
+        const [expiry, isResolved, isPaid] = await this.contract.getRequestStatus(requestId);
+        return {
+            expiry: Number(expiry),
+            isResolved,
+            isPaid,
+            isExpired: Number(expiry) < Math.floor(Date.now() / 1000)
+        };
     }
 
     /**
@@ -86,6 +128,10 @@ export class VeilPayContract {
      */
     async resolvePayment(requestId: string): Promise<boolean> {
         try {
+            // Check if result is ready via staticCall before sending a real transaction
+            // This saves gas and prevents unnecessary wallet popups
+            await this.contract.resolvePayment.staticCall(requestId);
+
             const tx = await this.contract.resolvePayment(requestId);
             await tx.wait();
             return true;
@@ -98,27 +144,59 @@ export class VeilPayContract {
     /**
      * Polls the contract for FHE resolution status (isPaid sufficiently).
      * Automatically attempts to resolve if the contract hasn't been updated yet.
+     * Uses both event listening and polling for maximum speed.
      */
-    async waitForResolution(requestId: string, maxAttempts: number = 12): Promise<boolean> {
-        let attempts = 0;
+    async waitForResolution(requestId: string, timeoutMs: number = 120000): Promise<boolean> {
+        return new Promise(async (resolve, reject) => {
+            let resolved = false;
 
-        while (attempts < maxAttempts) {
-            attempts++;
+            // 1. Setup Event Listener (Instant resolution)
+            const filter = this.contract.filters.PaymentResolved(requestId);
+            this.contract.once(filter, (id, isPaid) => {
+                if (!resolved) {
+                    resolved = true;
+                    resolve(isPaid);
+                }
+            });
 
-            // 1. Check current state
-            const status = await this.contract.getRequestStatus(requestId);
+            // 2. Setup Polling Fallback (Backup)
+            const startTime = Date.now();
+            const poll = async () => {
+                if (resolved) return;
 
-            if (status.isResolved) {
-                return status.isPaid; // true if sufficient, false if underpaid
-            }
+                try {
+                    const status = await this.getPaymentStatus(requestId);
+                    if (status.isResolved) {
+                        resolved = true;
+                        resolve(status.isPaid);
+                        return;
+                    }
 
-            // 2. Attempt to trigger resolution (in case Coprocessor finished but contract hasn't updated)
-            await this.resolvePayment(requestId);
+                    // Attempt resolution on-chain
+                    await this.resolvePayment(requestId);
+                } catch (e) {
+                    // Ignore transient errors during polling
+                }
 
-            // Wait 10 seconds before next poll (Decryption on Sepolia can take 2-3 blocks)
-            await new Promise(resolve => setTimeout(resolve, 10000));
-        }
+                if (Date.now() - startTime > timeoutMs) {
+                    if (!resolved) {
+                        resolved = true;
+                        reject(new VeilPayContractError("Resolution timed out. Decryption may still be in progress on the Coprocessor (Sepolia)."));
+                    }
+                    return;
+                }
 
-        throw new Error("[VeilPay SDK] Resolution timed out. Decryption may still be in progress on the Coprocessor (Sepolia).");
+                setTimeout(poll, 10000);
+            };
+
+            poll();
+        });
+    }
+
+    /**
+     * Returns the underlying ethers contract instance for custom calls.
+     */
+    getContract(): ethers.Contract {
+        return this.contract;
     }
 }

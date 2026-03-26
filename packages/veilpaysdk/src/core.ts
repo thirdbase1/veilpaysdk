@@ -1,4 +1,5 @@
 import { type CofhesdkClient, createCofhesdkClientBase } from "@cofhe/sdk";
+import { VeilPayInitError, VeilPayEncryptionError } from "./errors";
 
 export interface CoFHEStruct {
   ctHash: string | bigint;
@@ -35,6 +36,7 @@ export class VeilPayCoFHE {
   /**
    * Initializes the internal WASM and KMS keys.
    * MUST be called and awaited before any encryption.
+   * Caches the promise to avoid redundant initialization attempts.
    */
   async init(): Promise<void> {
     if (this.isReady) return;
@@ -47,13 +49,21 @@ export class VeilPayCoFHE {
           await (this.client as any).init();
         }
         this.isReady = true;
-      } catch (error) {
-        console.error("[VeilPay SDK] Initialization failed:", error);
-        throw error;
+        console.log("[VeilPay SDK] CoFHE Client initialized successfully.");
+      } catch (error: any) {
+        this.initPromise = null; // Reset promise so user can retry
+        throw new VeilPayInitError(error.message);
       }
     })();
 
     return this.initPromise;
+  }
+
+  /**
+   * Checks if the client is fully initialized and ready to encrypt.
+   */
+  isClientReady(): boolean {
+    return this.isReady;
   }
 
   /**
@@ -99,7 +109,7 @@ export class VeilPayCoFHE {
 
   private toStruct(result: any): CoFHEStruct {
     if (!this.validateStruct(result)) {
-      throw new Error("[VeilPay SDK] KMS returned an incomplete struct.");
+      throw new VeilPayEncryptionError("KMS returned an incomplete struct.");
     }
     return result as CoFHEStruct;
   }
