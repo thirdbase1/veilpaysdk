@@ -1,4 +1,4 @@
-import { CofhesdkClient } from "@cofhe/sdk";
+import { type CofhesdkClient, createCofhesdkClientBase } from "@cofhe/sdk";
 
 export interface CoFHEStruct {
   ctHash: string | bigint;
@@ -25,10 +25,11 @@ export class VeilPayCoFHE {
     const isServer = typeof window === "undefined";
     const storageOptions = isServer ? this.getMemoryStorage() : undefined;
 
-    this.client = new CofhesdkClient({
+    // Use the base factory function for cross-environment support
+    this.client = createCofhesdkClientBase({
       network,
       fheKeyStorage: storageOptions,
-    });
+    }) as CofhesdkClient;
   }
 
   /**
