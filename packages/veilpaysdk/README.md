@@ -10,7 +10,10 @@ Designed specifically for the **VeilPay Escrow & Invoicing** ecosystem on the **
 - **🛡️ Server-Side Stability:** Built-in detection and fixes for `fheKeyStorage` crashes in Node.js/Next.js (No `window.localStorage` required).
 - **🔒 Type-Safe FHE Structs:** Guaranteed formatting for `InEuint128` and `InEaddress` contract inputs (`ctHash`, `securityZone`, etc.).
 - **⚛️ React Hooks:** First-class support for React with the `useVeilPayCoFHE` hook.
-- **📑 Contract Wrapper:** High-level API for `createRequest`, `submitPayment`, and automated `resolvePayment` polling.
+- **📑 Contract Wrapper:** High-level API for `createRequest`, `submitPayment`, and gas-efficient `resolvePayment` polling using `staticCall`.
+- **⚡ Fast Resolution:** Uses event listeners (`PaymentResolved`) to resolve payments instantly when the Coprocessor returns.
+- **🛠️ Custom Errors:** Granular error classes (`VeilPayInitError`, `VeilPayContractError`) for better debugging.
+- **⛽ Gas Efficient:** Automated polling now checks contract state before sending transactions.
 
 ## 📦 Installation
 
@@ -22,15 +25,9 @@ npm install veilpaysdk
 
 ### 1. Frontend: Create an Encrypted Request
 
-Use the `useVeilPayCoFHE` hook to ensure the SDK is ready before encrypting.
-
 ```tsx
 import { useVeilPayCoFHE, VeilPayContract } from "veilpaysdk";
 import { ethers } from "ethers";
-
-// Your contract details
-const CONTRACT_ADDRESS = "0x...";
-const ABI = [...];
 
 export function CreateInvoice() {
   const { sdk, isReady, error } = useVeilPayCoFHE("sepolia");
@@ -41,21 +38,16 @@ export function CreateInvoice() {
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
 
-    // Initialize the high-level contract wrapper
     const veilPay = new VeilPayContract(CONTRACT_ADDRESS, ABI, signer);
 
     try {
-      // 1. Encrypts $20.00 amount via KMS
-      // 2. Encrypts merchant address via KMS
-      // 3. Submits correctly formatted Tuples to Sepolia
+      // Automates encryption and submission
       const requestId = await veilPay.createRequest(20.00, "0xMerchantAddress...");
       console.log("Invoice Created! Request ID:", requestId);
     } catch (err) {
       console.error("Failed to create invoice:", err);
     }
   };
-
-  if (error) return <div>Error: {error}</div>;
 
   return (
     <button disabled={!isReady} onClick={handleCreate}>
@@ -66,8 +58,6 @@ export function CreateInvoice() {
 ```
 
 ### 2. Backend: Automated Payment Submission
-
-The SDK handles server-side storage mocks automatically, making it safe for Next.js API routes or Express servers.
 
 ```typescript
 import { VeilPayContract } from "veilpaysdk";
@@ -84,22 +74,46 @@ export async function POST(req: Request) {
   // 1. Submit the paid amount to the contract (with FHE encryption)
   await veilPay.submitPayment(requestId, amountPaid);
 
-  // 2. Asynchronous Resolution
-  // On Sepolia, CoFHE decryption takes ~20 seconds.
-  // This method polls the contract and triggers resolvePayment() for you.
+  // 2. Asynchronous Resolution (v1.0.3 uses event listeners + polling)
   const success = await veilPay.waitForResolution(requestId);
 
   return Response.json({ status: success ? "Paid" : "Failed" });
 }
 ```
 
-## 🏛️ Architecture
+---
 
-The SDK consists of three core modules:
+## ❓ FAQ
 
-1.  **`VeilPayCoFHE` (Core):** The base client for KMS encryption. Handles cross-environment storage mocks.
-2.  **`useVeilPayCoFHE` (Hook):** React-specific state management for SDK initialization.
-3.  **`VeilPayContract` (Wrapper):** Direct mapping to `BlindPayEscrow.sol` methods, ensuring all inputs are encrypted according to CoFHE standards.
+### Do I need an API Key?
+**No.** The `veilpaysdk` interacts directly with the Fhenix CoFHE network and KMS on Sepolia. There is no external API key required for encryption or decryption requests.
+
+### Is the BlindPay contract already supported?
+**Yes.** This SDK is hard-coded to support the function signatures and encrypted struct requirements of the `BlindPayEscrow.sol` contract.
+
+---
+
+## 📅 Changelog
+
+### v1.0.3
+- **Fixed:** Added detailed console logging for all on-chain transactions.
+- **Improved:** Better error context when transactions fail or events are missing.
+- **Docs:** Added FAQ and detailed Changelog to README.
+
+### v1.0.2
+- **Feature:** Added custom error classes (`VeilPayInitError`, `VeilPayContractError`).
+- **Feature:** Added event-driven resolution (`PaymentResolved`) for near-instant success detection.
+- **Optimization:** Caching of the initialization promise for faster subsequent loads.
+- **Utility:** Added `isAddress`, `formatAmount`, and `parseAmount` helpers.
+
+### v1.0.1
+- **Optimization:** Added `staticCall` check before `resolvePayment` to save gas.
+- **Improved:** Added `getPaymentStatus()` helper.
+
+### v1.0.0
+- Initial release with `fheKeyStorage` server-side fix and `VeilPayContract` wrapper.
+
+---
 
 ## 🤝 Contribution
 
