@@ -70,22 +70,28 @@ const isPaid = await veilPay.waitForResolution(requestId);
 
 ---
 
-### 🧩 Exact Method Signatures for Reference
+### 🧩 Exact Method Signatures & Architectural Patterns
 
 **Note on Signers:**
 - `VeilPayCoFHE` (Raw Encryption): Needs **NO** signer or provider.
 - `VeilPayContract` (Blockchain): **REQUIRES** a `Signer` (for transactions) or `Provider` (for reading status).
 
-1. **Creating a Request (Encrypted):**
+1. **Creating a Request (Automated Flow):**
    `const requestId = await veilPay.createRequest(amount: number, address: string): Promise<string>`
-   - *Logic:* This method handles the KMS encryption of both parameters internally.
+   - *Architectural Tip:* This should be called on the **Frontend**. It encrypts parameters internally and submits the TX to the contract.
+   - *Database:* Save the returned `requestId` to your DB (e.g., Supabase) as a unique identifier.
 
-2. **Handling Resolution (Async):**
+2. **Verifying a Payment (Backend Flow):**
+   `const txHash = await veilPay.submitPayment(requestId: string, amount: number): Promise<string>`
+   - *Architectural Tip:* Called on the **Backend** once a USDC transfer is detected. It encrypts the paid amount and tells the contract to start FHE verification.
+
+3. **Handling Resolution (Async):**
    `const isPaid = await veilPay.waitForResolution(requestId: string): Promise<boolean>`
-   - *Logic:* This handles the 20s Coprocessor delay and returns the decrypted result.
+   - *Logic:* Handles the 20s Coprocessor delay. Returns `true` if sufficient.
+   - *Tip:* Use this to update your DB status from 'pending' to 'paid'.
 
-3. **Encryption Output Data Structure:**
-   Encryption methods return the `CoFHEStruct` required by the contract:
+4. **Encryption Output Data Structure:**
+   Raw methods (`encryptAmount`, `encryptAddress`) return the `CoFHEStruct` required by the contract:
    ```typescript
    {
      ctHash: string | bigint;
