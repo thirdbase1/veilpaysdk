@@ -91,6 +91,9 @@ export async function POST(req: Request) {
 ### Is the BlindPay contract already supported?
 **Yes.** This SDK is hard-coded to support the function signatures and encrypted struct requirements of the `BlindPayEscrow.sol` contract.
 
+### Should I encrypt on the Frontend or Backend?
+**Frontend.** For maximum privacy, you should encrypt the payment amount on the frontend. This ensures the plaintext price never leaves the user's machine. The backend only needs to encrypt during the payment verification step.
+
 ---
 
 ## 🛡️ Security & Keys
