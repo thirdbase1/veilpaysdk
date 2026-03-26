@@ -101,6 +101,11 @@ export async function POST(req: Request) {
 
 ## 📅 Changelog
 
+### v1.0.5
+- **Fix:** Bumped version to resolve NPM "previously published" error.
+- **Security:** Enhanced backend examples with proper `process.env` and `.env` safety.
+- **Troubleshooting:** Added versioning tips to `HOW_TO_PUBLISH.md`.
+
 ### v1.0.4
 - **Security:** Added explicit documentation for backend private key requirements and security best practices.
 - **Improved:** Better internal documentation for `BlindPayContract` signer requirements.
