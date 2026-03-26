@@ -1,124 +1,100 @@
-# 🚨 AI & Developer Guide: Integrating CoFHE SDK on Sepolia
+# CoFHE SDK Integration Guide (Sepolia)
 
-If you or your AI assistant are struggling to interact with the `BlindPayEscrow` contract using standard Fhenix tutorials or standard `fhenixjs`, **stop** what you are doing.
+This guide explains how to properly interact with the `BlindPayEscrow` contract using the CoFHE SDK on standard Ethereum Sepolia, covering both Frontend (React/Next.js) and Backend (Node.js API) implementations.
 
-You are using **CoFHE (Coprocessor for FHE)** deployed on **Sepolia**. This works fundamentally differently than deploying directly to the native Fhenix testnet (Helium).
-
-This guide explicitly details exactly how the inputs are structured, why standard `fhenixjs` fails, and how to format the data for your frontend and backend.
+Unlike the native Fhenix network (which uses `bytes` for encrypted data), the CoFHE infrastructure requires passing specific cryptographic proofs (Structs/Tuples containing a `ctHash` and `signature`) to the smart contract. You must generate these via the CoFHE SDK off-chain before sending your transaction.
 
 ---
 
-## ❌ The Problem: Why `fhenixjs.encrypt_uint128()` Fails
+## 1. Frontend Implementation (Browser)
 
-If you look at standard Fhenix documentation, you will see this:
-```javascript
-// This is for NATIVE Fhenix networks. IT WILL FAIL ON CoFHE/SEPOLIA.
-const encryptedAmount = await fhenixClient.encrypt_uint128(50);
-await contract.myFunction(encryptedAmount); // Reverts!
-```
-
-**Why it fails:**
-On a native Fhenix network, `inEuint128` expects raw, encrypted bytes (`bytes calldata ciphertext`).
-
-However, on **Sepolia via CoFHE**, the EVM cannot process raw ciphertexts. Therefore, the CoFHE SDK defines `InEuint128` as a **cryptographic proof (Struct)** that the data was encrypted by an authorized off-chain Key Management Service (KMS) or Oracle.
-
-Look at the ABI for `BlindPayEscrow.sol`. The contract expects a Tuple (Struct) for `InEuint128`:
-```json
-{
-  "internalType": "struct InEuint128",
-  "type": "tuple",
-  "components": [
-    { "name": "ctHash", "type": "uint256" },
-    { "name": "securityZone", "type": "uint8" },
-    { "name": "utype", "type": "uint8" },
-    { "name": "signature", "type": "bytes" }
-  ]
-}
-```
-
----
-
-## ✅ The Solution: Using the CoFHE SDK (Frontend & Backend)
-
-To pass data to `createRequest` or `submitPayment`, you must use the specialized **CoFHE SDK** (or interact with the Fhenix KMS API directly) to generate the `ctHash` and `signature`.
-
-### Step 1: Encrypting Data via the CoFHE KMS
-
-Instead of encrypting data purely locally in the browser, you must send the plaintext data to the Fhenix CoFHE KMS. The KMS encrypts it securely, stores the ciphertext off-chain (or on the Coprocessor), and returns a **hash** and a **signature** proving that it holds the encrypted value.
-
-*(Note: The exact package name or API endpoint depends on the specific wave of the AKINDO buildathon. Usually, Fhenix provides a specific CoFHE TypeScript SDK or a KMS REST API).*
-
-#### Pseudo-Code / SDK Logic for AI Assistants:
+On the frontend, the CoFHE SDK automatically uses the browser's `localStorage` to manage FHE keys.
 
 ```javascript
 import { ethers } from "ethers";
-// Import the specific CoFHE SDK provided by the hackathon organizers
-// e.g., import { CofheClient } from "@fhenixprotocol/cofhe-sdk";
+import { CofheClient } from "@fhenixprotocol/cofhe-sdk"; // Check actual package name
 
 async function createEscrowRequest(merchantSigner, priceInUSDC, expiryTime) {
     const contractAddress = "0x52a4f2b3218EE9A4bE7C91362c7CbC8db6C45B87";
     const contract = new ethers.Contract(contractAddress, ABI, merchantSigner);
 
-    // 1. Initialize CoFHE Client (Connects to Fhenix KMS Oracle)
-    // const cofheClient = new CofheClient({ network: "sepolia" });
+    // 1. Initialize CoFHE Client for the browser
+    const cofheClient = new CofheClient({ network: "sepolia" });
 
-    // 2. Encrypt the Price (uint128)
-    // The CoFHE client sends the plaintext to the KMS.
-    // The KMS returns the Struct: { ctHash, securityZone, utype, signature }
+    // 2. Encrypt the Price (uint128) via the KMS
+    // The KMS returns the required Struct: { ctHash, securityZone, utype, signature }
     const inAmountStruct = await cofheClient.encrypt(priceInUSDC, "uint128");
 
-    // 3. Encrypt the Merchant Address (address)
+    // 3. Encrypt the Merchant Address
     const merchantAddress = await merchantSigner.getAddress();
     const inMerchantStruct = await cofheClient.encrypt(merchantAddress, "address");
 
     // 4. Send the Transaction to Sepolia
-    // Notice we pass the STRUCTS returned by the KMS, NOT raw bytes.
     const tx = await contract.createRequest(
-        inAmountStruct,       // The CoFHE Proof Tuple
-        inMerchantStruct,     // The CoFHE Proof Tuple
-        expiryTime            // Standard uint256
+        inAmountStruct,
+        inMerchantStruct,
+        expiryTime
     );
 
     await tx.wait();
-    console.log("Request successfully created on Sepolia!");
-}
-```
-
-### Step 2: Submitting a Payment (Backend)
-
-When the backend detects a USDC transfer on Sepolia, it must perform the same CoFHE KMS encryption process before calling `submitPayment`.
-
-```javascript
-async function backendSubmitPayment(backendWallet, requestId, actualAmountPaid) {
-    const contractAddress = "0x52a4f2b3218EE9A4bE7C91362c7CbC8db6C45B87";
-    const contract = new ethers.Contract(contractAddress, ABI, backendWallet);
-
-    // 1. Initialize CoFHE Client
-    // const cofheClient = new CofheClient({ network: "sepolia" });
-
-    // 2. Encrypt the Actual Amount Paid
-    // The KMS returns the Struct: { ctHash, securityZone, utype, signature }
-    const inPaidAmountStruct = await cofheClient.encrypt(actualAmountPaid, "uint128");
-
-    // 3. Send the Transaction to Sepolia
-    const tx = await contract.submitPayment(
-        requestId,
-        inPaidAmountStruct    // The CoFHE Proof Tuple
-    );
-
-    await tx.wait();
-    console.log("Backend submitted encrypted payment to CoFHE Oracle!");
+    console.log("Request successfully created!");
 }
 ```
 
 ---
 
-## 🛠 Instructions for your AI Assistant (Copy & Paste)
+## 2. Backend Implementation (Node.js / Next.js API Routes)
 
-If you are using an AI (like Cursor, Claude, or ChatGPT) to write your frontend, copy and paste this exact prompt to them:
+When running the CoFHE SDK on a server (like a Next.js API route or an Express server), you **cannot** rely on the default configuration because servers do not have access to the browser's `window.localStorage`.
 
-> "I am interacting with a Fhenix CoFHE Smart Contract deployed on standard Ethereum Sepolia. Do not use the standard `fhenixjs` `encrypt_uint128()` method that returns bytes.
->
-> The contract's `InEuint128` and `InEaddress` types are Tuples (Structs) requiring: `(uint256 ctHash, uint8 securityZone, uint8 utype, bytes signature)`.
->
-> We must use the specific CoFHE KMS SDK/API provided by the hackathon to generate these cryptographic proofs off-chain, and then pass those structs into the ethers.js contract calls."
+You must explicitly provide a custom memory storage mechanism for the SDK to store its keys.
+
+```javascript
+import { ethers } from "ethers";
+import { CofheClient } from "@fhenixprotocol/cofhe-sdk"; // Check actual package name
+
+async function backendSubmitPayment(backendWallet, requestId, actualAmountPaid) {
+    const contractAddress = "0x52a4f2b3218EE9A4bE7C91362c7CbC8db6C45B87";
+    const contract = new ethers.Contract(contractAddress, ABI, backendWallet);
+
+    // 1. Initialize CoFHE Client for Node.js (CRITICAL FIX)
+    // We must provide a mock storage object because localStorage does not exist in Node.
+    const memoryStorage = {};
+    const cofheClient = new CofheClient({
+        network: "sepolia",
+        // Override the default storage mechanism depending on the SDK version
+        // Look for properties like 'keyStorage', 'fheKeyStorage', or 'storage' in the docs
+        fheKeyStorage: {
+            getItem: (key) => memoryStorage[key] || null,
+            setItem: (key, value) => { memoryStorage[key] = value; },
+            removeItem: (key) => { delete memoryStorage[key]; }
+        }
+    });
+
+    // 2. Encrypt the Actual Amount Paid via the KMS
+    const inPaidAmountStruct = await cofheClient.encrypt(actualAmountPaid, "uint128");
+
+    // 3. Send the Transaction to Sepolia
+    const tx = await contract.submitPayment(requestId, inPaidAmountStruct);
+    await tx.wait();
+
+    console.log("Backend submitted encrypted payment!");
+}
+```
+
+---
+
+## 3. Common Issues & Troubleshooting
+
+### Error: `TypeError: Cannot read properties of undefined (reading 'fheKeyStorage')`
+**Environment:** Next.js API Route / Node.js Backend
+**Cause:** This happens when the CoFHE SDK attempts to initialize and looks for the browser's `window.localStorage` to cache FHE keys. Because you are running on a server, `window` is `undefined`.
+**Solution:** You must pass a custom storage object into the `CofheClient` constructor (as demonstrated in the Backend Implementation above). Create a simple in-memory dictionary `const memoryStorage = {};` and pass standard `getItem` and `setItem` methods that interact with it.
+
+### Error: `execution reverted` or Contract crashes during `createRequest`
+**Cause:** You are likely passing raw encrypted bytes (generated by standard `fhenixjs`) into the contract.
+**Solution:** Ensure you are passing the Tuple/Struct returned by the CoFHE SDK (`{ ctHash, securityZone, utype, signature }`). Do not use the native `fhenixClient.encrypt_uint128()`.
+
+### Error: `NotAuthorized()` on `submitPayment`
+**Cause:** The wallet address calling the function is not the `AUTHORIZED_BACKEND` set during deployment.
+**Solution:** Ensure the private key loaded in your Backend matches the address `0x5bf88d8ea36418fc5b955609886524d8f84ed643`.
