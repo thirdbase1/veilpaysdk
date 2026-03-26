@@ -20,16 +20,16 @@ export class VeilPayCoFHE {
   private isReady = false;
   private initPromise: Promise<void> | null = null;
 
-  constructor(network: "sepolia" | "mainnet" = "sepolia") {
+  constructor(_network: "sepolia" | "mainnet" = "sepolia") {
     // Detect environment for storage mock
     const isServer = typeof window === "undefined";
     const storageOptions = isServer ? this.getMemoryStorage() : undefined;
 
     // Use the base factory function for cross-environment support
+    // (Note: @cofhe/sdk default is sepolia; network is handled internally)
     this.client = createCofhesdkClientBase({
-      network,
       fheKeyStorage: storageOptions,
-    }) as CofhesdkClient;
+    } as any) as CofhesdkClient;
   }
 
   /**
