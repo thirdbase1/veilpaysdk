@@ -1,27 +1,27 @@
 import { useState, useEffect, useMemo } from 'react';
-import { BlindPayCoFHE } from './core';
+import { VeilPayCoFHE } from './core';
 
-export interface UseBlindPayResult {
-    sdk: BlindPayCoFHE | null;
+export interface UseVeilPayResult {
+    sdk: VeilPayCoFHE | null;
     isReady: boolean;
     error: string | null;
 }
 
 /**
- * PRODUCTION-GRADE React Hook for BlindPay CoFHE
+ * PRODUCTION-GRADE React Hook for VeilPay CoFHE
  * Handles:
- * 1. Safe singleton initialization of the BlindPayCoFHE SDK.
+ * 1. Safe singleton initialization of the VeilPayCoFHE SDK.
  * 2. Asynchronous await for internal KMS and WASM state.
  * 3. Error state for UI feedback.
  * 4. Automatic "isReady" flag for UI components (buttons, loaders).
  */
-export function useBlindPayCoFHE(network: 'sepolia' | 'mainnet' = 'sepolia'): UseBlindPayResult {
-    const [sdk, setSdk] = useState<BlindPayCoFHE | null>(null);
+export function useVeilPayCoFHE(network: 'sepolia' | 'mainnet' = 'sepolia'): UseVeilPayResult {
+    const [sdk, setSdk] = useState<VeilPayCoFHE | null>(null);
     const [isReady, setIsReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Ensure we only create the instance once
-    const sdkInstance = useMemo(() => new BlindPayCoFHE(network), [network]);
+    const sdkInstance = useMemo(() => new VeilPayCoFHE(network), [network]);
 
     useEffect(() => {
         let isMounted = true;
@@ -34,10 +34,10 @@ export function useBlindPayCoFHE(network: 'sepolia' | 'mainnet' = 'sepolia'): Us
                 if (isMounted) {
                     setSdk(sdkInstance);
                     setIsReady(true);
-                    console.log("[BlindPay SDK] Ready for encryption.");
+                    console.log("[VeilPay SDK] Ready for encryption.");
                 }
             } catch (err: any) {
-                console.error("[BlindPay SDK] Hook Error:", err);
+                console.error("[VeilPay SDK] Hook Error:", err);
                 if (isMounted) {
                     setError(err.message || "Initialization failed.");
                 }

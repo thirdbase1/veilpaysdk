@@ -5,11 +5,11 @@ import {FHE, euint128, ebool, eaddress} from "@fhenixprotocol/cofhe-contracts/FH
 import {InEuint128, InEaddress} from "@fhenixprotocol/cofhe-contracts/ICofhe.sol";
 
 /**
- * @title BlindPayEscrow
- * @notice Fhenix CoFHE Encrypted Escrow & Payment System
+ * @title VeilPayEscrow
+ * @notice Fhenix CoFHE Encrypted Private Invoice & Payment System
  * @dev Demonstrates MEANINGFUL Encrypted Computation (Asynchronous FHE.gte) on Sepolia
  */
-contract BlindPayEscrow {
+contract VeilPayEscrow {
     address public immutable AUTHORIZED_BACKEND;
     address public immutable COFHE_ORACLE;
     address public constant SEPOLIA_USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;

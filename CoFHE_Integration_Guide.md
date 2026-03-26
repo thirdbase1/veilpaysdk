@@ -1,4 +1,4 @@
-# 🤖 👨‍💻 AI & Developer Master Guide: BlindPay Escrow (CoFHE Sepolia)
+# 🤖 👨‍💻 AI & Developer Master Guide: VeilPay Escrow (CoFHE Sepolia)
 
 **Context for AI Assistants (Cursor, ChatGPT, Claude):**
 You are assisting a developer in building a full-stack DApp (Next.js Frontend + Backend API) that interacts with a **Fhenix CoFHE Smart Contract** deployed on standard **Sepolia Testnet**.
@@ -9,7 +9,7 @@ This contract performs Fully Homomorphic Encryption (FHE) computations asynchron
 
 ---
 
-## 🏗️ 1. Smart Contract Architecture (`BlindPayEscrow.sol`)
+## 🏗️ 1. Smart Contract Architecture (`VeilPayEscrow.sol`)
 
 The contract acts as a blind escrow.
 - The merchant's required price is encrypted.

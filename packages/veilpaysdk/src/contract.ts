@@ -1,16 +1,16 @@
 import { ethers } from 'ethers';
-import { BlindPayCoFHE, CoFHEStruct } from './core';
+import { VeilPayCoFHE, CoFHEStruct } from './core';
 
 /**
- * CONTRACT-READY WRAPPER for BlindPay Escrow (CoFHE Sepolia)
+ * CONTRACT-READY WRAPPER for VeilPay Escrow (CoFHE Sepolia)
  * Handles:
  * 1. Automatic FHE Encryption of amounts and addresses.
  * 2. Proper contract submission to standard Sepolia.
  * 3. Consistent struct formatting for InEuint128/InEaddress.
  * 4. Asynchronous polling for CoFHE resolution status.
  */
-export class BlindPayContract {
-    private sdk: BlindPayCoFHE;
+export class VeilPayContract {
+    private sdk: VeilPayCoFHE;
     private contract: ethers.Contract;
 
     constructor(
@@ -19,7 +19,7 @@ export class BlindPayContract {
         signerOrProvider: ethers.Signer | ethers.Provider,
         network: 'sepolia' | 'mainnet' = 'sepolia'
     ) {
-        this.sdk = new BlindPayCoFHE(network);
+        this.sdk = new VeilPayCoFHE(network);
         this.contract = new ethers.Contract(contractAddress, abi, signerOrProvider);
     }
 
@@ -59,7 +59,7 @@ export class BlindPayContract {
 
         // 3. Extract requestId from logs (RequestCreated event)
         const event = receipt.logs.find((log: any) => log.fragment?.name === 'RequestCreated');
-        if (!event) throw new Error("[BlindPay SDK] Transaction failed to emit RequestCreated event.");
+        if (!event) throw new Error("[VeilPay SDK] Transaction failed to emit RequestCreated event.");
 
         return event.args[0]; // requestId
     }
@@ -81,24 +81,44 @@ export class BlindPayContract {
     }
 
     /**
-     * Polls the contract for FHE resolution status (isPaid sufficiently).
+     * Calls the contract's resolvePayment function to update isResolved based on FHE decryption.
+     * This is only successful if the Coprocessor has already returned the decryption result.
      */
-    async waitForResolution(requestId: string, maxAttempts: number = 10): Promise<boolean> {
+    async resolvePayment(requestId: string): Promise<boolean> {
+        try {
+            const tx = await this.contract.resolvePayment(requestId);
+            await tx.wait();
+            return true;
+        } catch (error) {
+            // Reverts if FHE result is not ready yet
+            return false;
+        }
+    }
+
+    /**
+     * Polls the contract for FHE resolution status (isPaid sufficiently).
+     * Automatically attempts to resolve if the contract hasn't been updated yet.
+     */
+    async waitForResolution(requestId: string, maxAttempts: number = 12): Promise<boolean> {
         let attempts = 0;
 
         while (attempts < maxAttempts) {
             attempts++;
+
+            // 1. Check current state
             const status = await this.contract.getRequestStatus(requestId);
 
-            // status.isResolved (boolean)
             if (status.isResolved) {
                 return status.isPaid; // true if sufficient, false if underpaid
             }
 
-            // Wait 5 seconds before next poll
-            await new Promise(resolve => setTimeout(resolve, 5000));
+            // 2. Attempt to trigger resolution (in case Coprocessor finished but contract hasn't updated)
+            await this.resolvePayment(requestId);
+
+            // Wait 10 seconds before next poll (Decryption on Sepolia can take 2-3 blocks)
+            await new Promise(resolve => setTimeout(resolve, 10000));
         }
 
-        throw new Error("[BlindPay SDK] Resolution timed out. Decryption may still be in progress on the Coprocessor.");
+        throw new Error("[VeilPay SDK] Resolution timed out. Decryption may still be in progress on the Coprocessor (Sepolia).");
     }
 }

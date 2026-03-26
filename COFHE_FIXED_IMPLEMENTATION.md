@@ -1,29 +1,29 @@
-# @blindpay/cofhe-sdk Implementation Guide
+# veilpaysdk Implementation Guide
 
-This document provides instructions on how to integrate the newly built `@blindpay/cofhe-sdk` into your project. This SDK resolves all previously identified issues including the `fheKeyStorage` crash, the "client not ready" initialization error, and the asynchronous resolution flow.
+This document provides instructions on how to integrate the newly built `veilpaysdk` into your project. This SDK resolves all previously identified issues including the `fheKeyStorage` crash, the "client not ready" initialization error, and the asynchronous resolution flow.
 
 ## 🚀 1. Installation
 
-You can install the SDK from your local `packages/cofhe-sdk` directory into your main project.
+You can install the SDK from your local `packages/veilpaysdk` directory into your main project.
 
 ```bash
 # In your main project directory
-npm install ./packages/cofhe-sdk
+npm install ./packages/veilpaysdk
 ```
 
 ---
 
 ## 🎨 2. Frontend: Simple "Create Request"
 
-The SDK handles initialization for you with the `useBlindPayCoFHE` hook.
+The SDK handles initialization for you with the `useVeilPayCoFHE` hook.
 
 ```typescript
 // /app/(pages)/create/page.tsx
-import { useBlindPayCoFHE, BlindPayContract } from "@blindpay/cofhe-sdk";
+import { useVeilPayCoFHE, VeilPayContract } from "veilpaysdk";
 import { ethers } from "ethers";
 
 export default function CreatePage() {
-    const { sdk, isReady, error } = useBlindPayCoFHE("sepolia");
+    const { sdk, isReady, error } = useVeilPayCoFHE("sepolia");
 
     const handleCreate = async () => {
         if (!sdk || !isReady) return;
@@ -31,13 +31,13 @@ export default function CreatePage() {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
 
-        const blindPay = new BlindPayContract(CONTRACT_ADDRESS, ABI, signer);
+        const veilPay = new VeilPayContract(CONTRACT_ADDRESS, ABI, signer);
 
         // AUTOMATICALLY:
         // 1. Encrypts amount (20.00 USDC)
         // 2. Encrypts merchant address
         // 3. Submits correctly formatted structs to Sepolia
-        const requestId = await blindPay.createRequest(20.00, "0xMerchant...");
+        const requestId = await veilPay.createRequest(20.00, "0xMerchant...");
 
         console.log("Success! Request ID:", requestId);
     };
@@ -60,7 +60,7 @@ The SDK automatically mocks `fheKeyStorage` to prevent server-side crashes.
 
 ```typescript
 // /app/api/cofhe/submit-payment/route.ts
-import { BlindPayCoFHE, BlindPayContract } from "@blindpay/cofhe-sdk";
+import { VeilPayContract } from "veilpaysdk";
 import { ethers } from "ethers";
 
 export async function POST(req: Request) {
@@ -69,14 +69,14 @@ export async function POST(req: Request) {
     const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
     const wallet = new ethers.Wallet(process.env.BACKEND_PRIVATE_KEY, provider);
 
-    const blindPay = new BlindPayContract(CONTRACT_ADDRESS, ABI, wallet);
+    const veilPay = new VeilPayContract(CONTRACT_ADDRESS, ABI, wallet);
 
     // 1. Submit payment to the contract (with automatic encryption)
-    await blindPay.submitPayment(requestId, actualAmountPaid);
+    await veilPay.submitPayment(requestId, actualAmountPaid);
 
     // 2. Poll for the Coprocessor result (Asynchronous Resolution)
     // This waits for the Fhenix Coprocessor to provide the result.
-    const isPaidSufficiently = await blindPay.waitForResolution(requestId);
+    const isPaidSufficiently = await veilPay.waitForResolution(requestId);
 
     if (isPaidSufficiently) {
         // Update database SET status = 'paid'

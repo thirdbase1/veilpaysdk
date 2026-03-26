@@ -1,7 +1,7 @@
 {
-  "name": "@blindpay/cofhe-sdk",
+  "name": "veilpaysdk",
   "version": "1.0.0",
-  "description": "Fhenix CoFHE wrapper for BlindPay Escrow",
+  "description": "Fhenix CoFHE wrapper for VeilPay Private Invoicing",
   "main": "dist/index.js",
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",

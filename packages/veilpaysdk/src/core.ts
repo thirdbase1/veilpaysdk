@@ -8,14 +8,14 @@ export interface CoFHEStruct {
 }
 
 /**
- * PRODUCTION-GRADE Fhenix CoFHE Wrapper for BlindPay
+ * PRODUCTION-GRADE Fhenix CoFHE Wrapper for VeilPay
  * Handles:
  * 1. Server-side localStorage crash fix
  * 2. Asynchronous initialization (init() method)
  * 3. Type-safe encryption for uint128 and addresses
  * 4. Validation of contract-ready structs
  */
-export class BlindPayCoFHE {
+export class VeilPayCoFHE {
   private client: CofheClient;
   private isReady = false;
   private initPromise: Promise<void> | null = null;
@@ -47,7 +47,7 @@ export class BlindPayCoFHE {
         }
         this.isReady = true;
       } catch (error) {
-        console.error("[BlindPay SDK] Initialization failed:", error);
+        console.error("[VeilPay SDK] Initialization failed:", error);
         throw error;
       }
     })();
@@ -91,14 +91,14 @@ export class BlindPayCoFHE {
 
   private async ensureReady() {
     if (!this.isReady) {
-      console.warn("[BlindPay SDK] Not ready, attempting auto-init...");
+      console.warn("[VeilPay SDK] Not ready, attempting auto-init...");
       await this.init();
     }
   }
 
   private toStruct(result: any): CoFHEStruct {
     if (!this.validateStruct(result)) {
-      throw new Error("[BlindPay SDK] KMS returned an incomplete struct.");
+      throw new Error("[VeilPay SDK] KMS returned an incomplete struct.");
     }
     return result as CoFHEStruct;
   }
