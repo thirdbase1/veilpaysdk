@@ -36,11 +36,13 @@ export class VeilPayContract {
      * @param amount The price (e.g., 50.00 USDC)
      * @param merchantAddress The merchant's wallet
      * @param expirySeconds Expiry time (defaults to 24h)
+     * @param overrides Optional ethers transaction overrides (gasLimit, etc.)
      */
     async createRequest(
         amount: number,
         merchantAddress: string,
-        expirySeconds: number = 86400
+        expirySeconds: number = 86400,
+        overrides: ethers.Overrides = {}
     ): Promise<string> {
         if (!ethers.isAddress(merchantAddress)) {
             throw new VeilPayValidationError(`Invalid merchant address: ${merchantAddress}`);
@@ -63,7 +65,8 @@ export class VeilPayContract {
             const tx = await this.contract.createRequest(
                 encryptedAmount,
                 encryptedMerchant,
-                expiryTimestamp
+                expiryTimestamp,
+                overrides
             );
             const receipt = await tx.wait();
 
@@ -85,8 +88,15 @@ export class VeilPayContract {
 
     /**
      * Submits an actual paid amount (USDC) from the Backend/Oracle.
+     * @param requestId The request ID to pay
+     * @param actualAmount The actual amount paid
+     * @param overrides Optional ethers transaction overrides (gasLimit, etc.)
      */
-    async submitPayment(requestId: string, actualAmount: number): Promise<string> {
+    async submitPayment(
+        requestId: string,
+        actualAmount: number,
+        overrides: ethers.Overrides = {}
+    ): Promise<string> {
         if (actualAmount <= 0) {
             throw new VeilPayValidationError("Actual amount must be greater than 0");
         }
@@ -99,7 +109,7 @@ export class VeilPayContract {
         // 2. Submit to the contract
         try {
             console.log(`[VeilPay SDK] Submitting payment for request: ${requestId}`);
-            const tx = await this.contract.submitPayment(requestId, encryptedPaidAmount);
+            const tx = await this.contract.submitPayment(requestId, encryptedPaidAmount, overrides);
             const receipt = await tx.wait();
             console.log(`[VeilPay SDK] Payment submitted in tx: ${receipt.hash}`);
             return receipt.hash;
@@ -145,16 +155,26 @@ export class VeilPayContract {
      * Polls the contract for FHE resolution status (isPaid sufficiently).
      * Automatically attempts to resolve if the contract hasn't been updated yet.
      * Uses both event listening and polling for maximum speed.
+     * @param requestId The request ID to watch
+     * @param timeoutMs Max time to wait (default 2 minutes)
+     * @param onProgress Optional callback for status updates
      */
-    async waitForResolution(requestId: string, timeoutMs: number = 120000): Promise<boolean> {
+    async waitForResolution(
+        requestId: string,
+        timeoutMs: number = 120000,
+        onProgress?: (status: string) => void
+    ): Promise<boolean> {
         return new Promise(async (resolve, reject) => {
             let resolved = false;
+
+            if (onProgress) onProgress("Setting up event listeners...");
 
             // 1. Setup Event Listener (Instant resolution)
             const filter = this.contract.filters.PaymentResolved(requestId);
             this.contract.once(filter, (id, isPaid) => {
                 if (!resolved) {
                     resolved = true;
+                    if (onProgress) onProgress("PaymentResolved event detected!");
                     resolve(isPaid);
                 }
             });
@@ -165,14 +185,17 @@ export class VeilPayContract {
                 if (resolved) return;
 
                 try {
+                    if (onProgress) onProgress("Checking contract status...");
                     const status = await this.getPaymentStatus(requestId);
                     if (status.isResolved) {
                         resolved = true;
+                        if (onProgress) onProgress("Resolution confirmed via contract state.");
                         resolve(status.isPaid);
                         return;
                     }
 
                     // Attempt resolution on-chain
+                    if (onProgress) onProgress("Triggering on-chain resolution check...");
                     await this.resolvePayment(requestId);
                 } catch (e) {
                     // Ignore transient errors during polling
@@ -186,10 +209,31 @@ export class VeilPayContract {
                     return;
                 }
 
+                if (onProgress) onProgress("Waiting for next poll cycle...");
                 setTimeout(poll, 10000);
             };
 
             poll();
+        });
+    }
+
+    /**
+     * Sets up a listener for when a payment is resolved.
+     */
+    onPaymentResolved(requestId: string, callback: (isPaid: boolean) => void) {
+        const filter = this.contract.filters.PaymentResolved(requestId);
+        this.contract.on(filter, (id, isPaid) => {
+            callback(isPaid);
+        });
+    }
+
+    /**
+     * Sets up a listener for when a payment is submitted by the backend.
+     */
+    onPaymentSubmitted(requestId: string, callback: () => void) {
+        const filter = this.contract.filters.PaymentSubmitted(requestId);
+        this.contract.on(filter, (id) => {
+            callback();
         });
     }
 
