@@ -1,17 +1,43 @@
-# 🤖 AI Migration Guide: Switch to `veilpaysdk`
+# 🛡️ CoFHE Migration Guide: Switch to `veilpaysdk`
 
-**Context:** This repository contains a production-ready SDK named `veilpaysdk` that wraps Fhenix CoFHE logic. All previous manual encryption logic, "client ready" checks, and server-side storage mocks are now DEPRECATED.
+**Context:** This repository contains a production-ready SDK named `veilpaysdk` that wraps Fhenix CoFHE logic. This SDK is **100% compliant** with the **Fhenix AKINDO Buildathon Wave 1** requirements.
 
 ### 🚩 THE GOAL
 Remove all manual imports of `@cofhe/sdk` and `fhenixjs` from the site's frontend and backend. Replace them with the high-level `veilpaysdk` to ensure stability and 100% contract compatibility.
 
 ---
 
-### 1. Frontend Migration (React/Next.js)
+### 1. Build-Ready & SSR-Safe (v1.1.0 Update)
+
+**❌ THE OLD PROBLEM:**
+Next.js projects often crash during the `next build` (prerendering) phase with the error:
+`TypeError: Cannot read properties of undefined (reading 'fheKeyStorage')`
+
+**✅ THE v1.1.0 FIX:**
+`veilpaysdk` now implements **Ultra-Lazy Initialization**.
+- **Side-Effect Free Constructor:** Instantiating the SDK no longer triggers environment-sensitive logic.
+- **Dynamic Imports:** The `@cofhe/sdk` engine is only loaded at runtime during the `init()` call, safely bypassing build-time static analysis.
+- **Zero-Config:** Automatically handles storage in all environments without manual mocks.
+
+---
+
+### 2. Buildathon Compliance Checklist
+
+| Requirement | VeilPay SDK Status |
+| :--- | :--- |
+| **CoFHE Stack (@cofhe/sdk)** | ✅ Integrated internally as the primary engine. |
+| **Mandatory Permits** | ✅ New `generatePermit()` method for viewing encrypted data. |
+| **No Wagmi/RainbowKit Dependency** | ✅ Zero dependencies on Wagmi/RainbowKit. Works with raw `ethers`. |
+| **Hardhat Recommended** | ✅ Compatible with Hardhat and standard Sepolia. |
+| **React Hooks Recommended** | ✅ Includes a high-performance `useVeilPayCoFHE()` hook. |
+
+---
+
+### 3. Frontend Migration (React/Next.js)
 
 **❌ OLD WAY (Broken/Manual):**
 ```typescript
-import { CofheClient } from "@cofhe/sdk"; // Or similar
+import { CofheClient } from "@cofhe/sdk";
 // Manual init, manual waiting for WASM, manual struct construction
 ```
 
@@ -26,27 +52,31 @@ export default function MyComponent() {
     const veilPay = new VeilPayContract(ADDR, ABI, signer);
     // Automatic encryption for InEuint128 and InEaddress
     await veilPay.createRequest(20.00, merchantAddr);
+
+    // Optional: Generate mandatory permit for viewing results
+    const permit = await sdk.generatePermit(ADDR, provider);
   };
 }
 ```
 
 ---
 
-### 2. Backend Migration (API Routes)
+### 4. Backend Migration (API Routes)
 
-**❌ OLD WAY (Crashes in Node.js):**
+**❌ OLD WAY (Manual Memory Mocks):**
 ```typescript
-const client = new CofheClient({ network: "sepolia" });
-// Crashes with "fheKeyStorage of undefined"
+// Previously required manual storage hacks that often failed
+const memoryStorage = {};
+const client = new CofheClient({ network: "sepolia", fheKeyStorage: { ... } });
 ```
 
-**✅ NEW WAY (Stable/Automated):**
+**✅ NEW WAY (Zero-Config Backend):**
 ```typescript
 import { VeilPayContract } from "veilpaysdk";
 
 export async function POST(req) {
+  // ZERO config needed! Storage fallback is automatic.
   const veilPay = new VeilPayContract(ADDR, ABI, wallet);
-  // veilpaysdk handles the server-side memoryStorage mock internally.
   await veilPay.submitPayment(requestId, amount);
 
   // Handles the 20s Coprocessor delay automatically
@@ -56,30 +86,11 @@ export async function POST(req) {
 
 ---
 
-### 3. Asynchronous Resolution Migration
-
-**❌ OLD WAY (Inefficient):**
-AI scripts often try to call `resolvePayment` immediately or use complex `setTimeout` loops.
-
-**✅ NEW WAY:**
-Use the built-in polling + event listening logic.
-```typescript
-// This ONE line replaces 50 lines of event listeners and polling logic
-const isPaid = await veilPay.waitForResolution(requestId);
-```
-
----
-
 ### 🧩 Exact Method Signatures & Architectural Patterns
-
-**Note on Signers:**
-- `VeilPayCoFHE` (Raw Encryption): Needs **NO** signer or provider.
-- `VeilPayContract` (Blockchain): **REQUIRES** a `Signer` (for transactions) or `Provider` (for reading status).
 
 1. **Creating a Request (Automated Flow):**
    `const requestId = await veilPay.createRequest(amount: number, address: string): Promise<string>`
    - *Architectural Tip:* This should be called on the **Frontend**. It encrypts parameters internally and submits the TX to the contract.
-   - *Database:* Save the returned `requestId` to your DB (e.g., Supabase) as a unique identifier.
 
 2. **Verifying a Payment (Backend Flow):**
    `const txHash = await veilPay.submitPayment(requestId: string, amount: number): Promise<string>`
@@ -88,18 +99,6 @@ const isPaid = await veilPay.waitForResolution(requestId);
 3. **Handling Resolution (Async):**
    `const isPaid = await veilPay.waitForResolution(requestId: string): Promise<boolean>`
    - *Logic:* Handles the 20s Coprocessor delay. Returns `true` if sufficient.
-   - *Tip:* Use this to update your DB status from 'pending' to 'paid'.
-
-4. **Encryption Output Data Structure:**
-   Raw methods (`encryptAmount`, `encryptAddress`) return the `CoFHEStruct` required by the contract:
-   ```typescript
-   {
-     ctHash: string | bigint;
-     securityZone: number;
-     utype: number;
-     signature: string;
-   }
-   ```
 
 ### 🛠 INSTRUCTIONS FOR AI ASSISTANTS:
 1.  **Scan** the codebase for any `import ... from "@cofhe/sdk"` or `fhenixjs`.

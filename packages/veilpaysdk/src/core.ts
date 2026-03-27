@@ -1,4 +1,3 @@
-import { type CofhesdkClient, createCofhesdkClientBase } from "@cofhe/sdk";
 import { VeilPayInitError, VeilPayEncryptionError } from "./errors";
 
 export interface CoFHEStruct {
@@ -15,55 +14,18 @@ export interface CoFHEStruct {
  * 2. Asynchronous initialization (init() method)
  * 3. Type-safe encryption for uint128 and addresses
  * 4. Validation of contract-ready structs
+ * 5. ULTRA-LAZY initialization to prevent SSR/Prerender crashes
  */
 export class VeilPayCoFHE {
-  private client: CofhesdkClient;
+  private client: any = null;
   private isReady = false;
   private initPromise: Promise<void> | null = null;
+  private network: string;
 
-  constructor(_network: "sepolia" | "mainnet" = "sepolia") {
-    // ULTRA-ROBUST ENVIRONMENT DETECTION:
-    // Next.js and some specific browser configurations can still crash if we reference
-    // 'window' or 'localStorage' even with a typeof check if the SDK itself
-    // attempts to access it later.
-
-    const memoryStorageInstance = this.getMemoryStorage();
-
-    // We wrap the storage in a proxy-like object to ensure no undefined access
-    const safeStorage = {
-      getItem: (key: string) => {
-        try {
-          if (typeof window !== 'undefined' && window.localStorage) {
-            return window.localStorage.getItem(key);
-          }
-        } catch (e) {}
-        return memoryStorageInstance.getItem(key);
-      },
-      setItem: (key: string, value: string) => {
-        try {
-          if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.setItem(key, value);
-            return;
-          }
-        } catch (e) {}
-        memoryStorageInstance.setItem(key, value);
-      },
-      removeItem: (key: string) => {
-        try {
-          if (typeof window !== 'undefined' && window.localStorage) {
-            window.localStorage.removeItem(key);
-            return;
-          }
-        } catch (e) {}
-        memoryStorageInstance.removeItem(key);
-      }
-    };
-
-    // Use the base factory function for cross-environment support.
-    // We pass our safeStorage wrapper directly.
-    this.client = createCofhesdkClientBase({
-      fheKeyStorage: safeStorage,
-    } as any) as CofhesdkClient;
+  constructor(network: "sepolia" | "mainnet" = "sepolia") {
+    this.network = network;
+    // CONSTRUCTOR IS NOW COMPLETELY SIDE-EFFECT FREE.
+    // This prevents "fheKeyStorage" errors during Next.js Prerendering (SSR).
   }
 
   /**
@@ -77,10 +39,53 @@ export class VeilPayCoFHE {
 
     this.initPromise = (async () => {
       try {
+        // DYNAMIC IMPORT: Ensures @cofhe/sdk is only loaded at runtime,
+        // never during the static build/prerender phase.
+        const { createCofhesdkClientBase } = await import("@cofhe/sdk");
+
+        const memoryStorageInstance = this.getMemoryStorage();
+
+        // ULTRA-ROBUST STORAGE WRAPPER:
+        // Every operation is try-caught with a memory fallback.
+        const safeStorage = {
+          getItem: (key: string) => {
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                return window.localStorage.getItem(key);
+              }
+            } catch (e) {}
+            return memoryStorageInstance.getItem(key);
+          },
+          setItem: (key: string, value: string) => {
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem(key, value);
+                return;
+              }
+            } catch (e) {}
+            memoryStorageInstance.setItem(key, value);
+          },
+          removeItem: (key: string) => {
+            try {
+              if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.removeItem(key);
+                return;
+              }
+            } catch (e) {}
+            memoryStorageInstance.removeItem(key);
+          }
+        };
+
+        // Initialize the client ONLY when explicitly requested at runtime.
+        this.client = createCofhesdkClientBase({
+          fheKeyStorage: safeStorage,
+        } as any);
+
         // Many versions of @cofhe/sdk require explicit init
         if (typeof (this.client as any).init === "function") {
           await (this.client as any).init();
         }
+
         this.isReady = true;
         console.log("[VeilPay SDK] CoFHE Client initialized successfully.");
       } catch (error: any) {
@@ -118,6 +123,21 @@ export class VeilPayCoFHE {
     await this.ensureReady();
     const result = await (this.client as any).encryptAddress(address);
     return this.toStruct(result);
+  }
+
+  /**
+   * Generates a CoFHE permit for viewing encrypted data.
+   * This is a mandatory requirement for the CoFHE stack.
+   * @param contractAddress The address of the contract to permit
+   * @param provider The ethers provider to sign the permit
+   */
+  async generatePermit(contractAddress: string, provider: any): Promise<any> {
+    await this.ensureReady();
+    try {
+      return await (this.client as any).generatePermit(contractAddress, provider);
+    } catch (error: any) {
+      throw new VeilPayEncryptionError(`Permit generation failed: ${error.message}`);
+    }
   }
 
   /**
