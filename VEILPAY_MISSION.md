@@ -12,14 +12,20 @@ On standard blockchains like Ethereum or Sepolia, **Privacy is impossible.**
 VeilPay uses Fhenix CoFHE to create "Blind Invoices" that leverage **State Privacy.**
 
 - **Encrypted Amounts (`euint128`):** The requested price is encrypted via CoFHE KMS before it ever hits the blockchain. No one can see your invoice's total value.
-- **Encrypted Merchant Identity (`eaddress`):** While the *transaction sender* (`msg.sender`) is public on Sepolia, the *merchant's address* stored inside the contract is encrypted. This means an observer cannot easily scrape the contract to find every invoice ever sent to a specific merchant.
+- **Encrypted Merchant Identity (`eaddress`):** While the *transaction sender* (`msg.sender`) is public on Sepolia, the *merchant's address* stored inside the contract is encrypted.
 - **On-Chain Math:** When a payment is submitted, the contract calculates `FHE.gte(submitted, required)` *inside the encryption*.
 - **Asynchronous Resolution:** The Fhenix Coprocessor solves the math off-chain and returns only the boolean "SUCCESS" or "FAILURE" to the contract.
 
-### 🛡️ A Note on Privacy (State vs. Transaction)
-In its current form on Sepolia, **VeilPay provides State Privacy.**
-1.  **Public:** The address of the person *submitting* the payment (Payer) is visible in the transaction log.
-2.  **Private:** The *target price* of the invoice and the *internal mapping* of the merchant's wallet are protected by FHE.
+---
+
+## 🏆 Buildathon Ready (AKINDO Wave 1 Compliance)
+
+VeilPay and the `veilpaysdk` are purpose-built to meet and exceed the **Fhenix AKINDO Buildathon Wave 1** requirements:
+
+1. **CoFHE Stack:** Exclusively utilizes `@fhenixprotocol/cofhe-contracts` and the `@cofhe/sdk` KMS for all FHE operations.
+2. **Mandatory Permits:** The SDK includes built-in support for `generatePermit()`, a mandatory feature of the CoFHE stack for authorizing data decryption views.
+3. **Library Neutrality:** The SDK has **ZERO dependencies on Wagmi, RainbowKit, or WalletConnect**, ensuring it can be plugged into any ethers-based project without configuration bloat.
+4. **Hardhat & React Hooks:** Follows the recommended development flow with Hardhat-compatible contract structures and high-level React hooks for the frontend.
 
 ---
 
@@ -31,10 +37,7 @@ Since the blockchain is "blind," you cannot search for payments by merchant addr
 - **Action:** User fills in "20$" and "Merchant Address."
 - **SDK:** `veilPay.createRequest(20.00, address)` encrypts the data and submits to the `BlindPayEscrow` contract.
 - **Event:** The contract emits `RequestCreated(requestId)`.
-- **Database Save:** Your site captures this `requestId` and saves it to your database:
-  ```json
-  { "requestId": "0x123...", "amount": 20, "merchant": "0xABC...", "status": "pending" }
-  ```
+- **Database Save:** Your site captures this `requestId` and saves it to your database.
 
 ### 2. Payment (Backend)
 - **Action:** A customer pays USDC to your designated bridge address.
@@ -45,12 +48,11 @@ Since the blockchain is "blind," you cannot search for payments by merchant addr
 - **Action:** The Fhenix Coprocessor calculates the result.
 - **SDK Polling:** `veilPay.waitForResolution(requestId)` polls the contract.
 - **Status Update:** Once the SDK returns `true`, your site updates the database to `"paid"`.
-- **UI:** The frontend sees the DB status change and shows the "Success" screen to the user.
 
 ---
 
 ## 📊 Why Build VeilPay? (The "Privacy-by-Design" Winner)
-VeilPay is a critical piece of infrastructure for the Fhenix Buildathon because it solves a real-world $500B problem: **The lack of enterprise-grade privacy in Web3 commerce.**
+VeilPay is a critical piece of infrastructure for the Fhenix ecosystem because it solves a real-world $500B problem: **The lack of enterprise-grade privacy in Web3 commerce.**
 
 By building VeilPay, you are enabling:
 1.  **Private B2B Invoicing:** Companies can pay each other without revealing sensitive business data.

@@ -17,11 +17,12 @@ If you are building the frontend/backend for this contract on Sepolia, **you MUS
 
 ---
 
-## 🛡️ The `veilpaysdk` (v1.0.9)
-The repository now includes an **Ultra-Robust SDK** that fixes common environment crashes:
-- **Zero-Config Backend:** Automatically handles the `fheKeyStorage` error in Node.js and Next.js SSR.
+## 🛡️ The `veilpaysdk` (v1.1.0)
+The repository now includes an **Ultra-Robust and SSR-Safe SDK** that fixes all environment crashes:
+- **Prerender & SSR-Safe:** New **Ultra-Lazy Initialization** ensures the SDK never crashes during `next build` or server-side rendering.
+- **Zero-Config Backend:** Automatically handles the `fheKeyStorage` error in Node.js.
 - **Contract-Ready:** Handles all encryption, struct construction, and asynchronous FHE resolution in one package.
-- **Gas Efficient:** Prevents wasted gas on premature resolution attempts.
+- **Buildathon Compliant:** Includes built-in support for mandatory CoFHE permits.
 
 ### Quick Start (Frontend)
 ```typescript

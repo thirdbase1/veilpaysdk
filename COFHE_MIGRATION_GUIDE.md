@@ -1,26 +1,39 @@
 # 🛡️ CoFHE Migration Guide: Switch to `veilpaysdk`
 
-**Context:** This repository contains a production-ready SDK named `veilpaysdk` that wraps Fhenix CoFHE logic. All previous manual encryption logic, "client ready" checks, and server-side storage mocks are now DEPRECATED.
+**Context:** This repository contains a production-ready SDK named `veilpaysdk` that wraps Fhenix CoFHE logic. This SDK is **100% compliant** with the **Fhenix AKINDO Buildathon Wave 1** requirements.
 
 ### 🚩 THE GOAL
 Remove all manual imports of `@cofhe/sdk` and `fhenixjs` from the site's frontend and backend. Replace them with the high-level `veilpaysdk` to ensure stability and 100% contract compatibility.
 
 ---
 
-### 1. The "Ultra-Robust" Storage Fix (New in v1.0.9)
+### 1. Build-Ready & SSR-Safe (v1.1.0 Update)
 
 **❌ THE OLD PROBLEM:**
-Next.js SSR and Node.js environments frequently crash with:
+Next.js projects often crash during the `next build` (prerendering) phase with the error:
 `TypeError: Cannot read properties of undefined (reading 'fheKeyStorage')`
 
-**✅ THE NEW FIX:**
-`veilpaysdk` now implements a **try-catch storage wrapper with automatic persistent memory fallback**.
-- **No manual mocks needed:** You no longer need to pass `memoryStorage` dictionaries to the client.
-- **SSR-Safe:** The SDK detection logic now handles the transition between server-side and client-side execution flawlessly.
+**✅ THE v1.1.0 FIX:**
+`veilpaysdk` now implements **Ultra-Lazy Initialization**.
+- **Side-Effect Free Constructor:** Instantiating the SDK no longer triggers environment-sensitive logic.
+- **Dynamic Imports:** The `@cofhe/sdk` engine is only loaded at runtime during the `init()` call, safely bypassing build-time static analysis.
+- **Zero-Config:** Automatically handles storage in all environments without manual mocks.
 
 ---
 
-### 2. Frontend Migration (React/Next.js)
+### 2. Buildathon Compliance Checklist
+
+| Requirement | VeilPay SDK Status |
+| :--- | :--- |
+| **CoFHE Stack (@cofhe/sdk)** | ✅ Integrated internally as the primary engine. |
+| **Mandatory Permits** | ✅ New `generatePermit()` method for viewing encrypted data. |
+| **No Wagmi/RainbowKit Dependency** | ✅ Zero dependencies on Wagmi/RainbowKit. Works with raw `ethers`. |
+| **Hardhat Recommended** | ✅ Compatible with Hardhat and standard Sepolia. |
+| **React Hooks Recommended** | ✅ Includes a high-performance `useVeilPayCoFHE()` hook. |
+
+---
+
+### 3. Frontend Migration (React/Next.js)
 
 **❌ OLD WAY (Broken/Manual):**
 ```typescript
@@ -39,13 +52,16 @@ export default function MyComponent() {
     const veilPay = new VeilPayContract(ADDR, ABI, signer);
     // Automatic encryption for InEuint128 and InEaddress
     await veilPay.createRequest(20.00, merchantAddr);
+
+    // Optional: Generate mandatory permit for viewing results
+    const permit = await sdk.generatePermit(ADDR, provider);
   };
 }
 ```
 
 ---
 
-### 3. Backend Migration (API Routes)
+### 4. Backend Migration (API Routes)
 
 **❌ OLD WAY (Manual Memory Mocks):**
 ```typescript
