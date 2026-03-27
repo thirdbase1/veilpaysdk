@@ -7,50 +7,66 @@ export interface CoFHEStruct {
   signature: string;
 }
 
-// GLOBAL SINGLETON STATE:
-// This ensures that initialization only ever happens ONCE across the entire
-// application life-cycle, even during concurrent React renders or SSR.
+// GLOBAL SINGLETON STATE
 let globalClient: any = null;
 let globalInitPromise: Promise<void> | null = null;
 let globalIsReady = false;
 
 /**
- * PRODUCTION-GRADE Fhenix CoFHE Wrapper for VeilPay
- * Handles:
- * 1. Server-side localStorage crash fix
- * 2. Asynchronous initialization (init() method)
- * 3. Type-safe encryption for uint128 and addresses
- * 4. Validation of contract-ready structs
- * 5. ULTRA-LAZY & CONCURRENT-SAFE initialization
+ * PRODUCTION-GRADE Fhenix CoFHE Wrapper for VeilPay (v1.3.0)
+ *
+ * v1.3.0 FEATURES:
+ * 1. Build-Time Gating: Prevents crashes during 'next build' / Prerendering.
+ * 2. Ultra-Lazy Initialization: Only loads @cofhe/sdk at runtime.
+ * 3. Concurrent-Safe: Shared global promise prevents race conditions.
+ * 4. Safe Storage Fallback: Bulletproof memory fallback for Node.js/SSR.
  */
 export class VeilPayCoFHE {
   private network: string;
 
   constructor(network: "sepolia" | "mainnet" = "sepolia") {
     this.network = network;
-    // CONSTRUCTOR IS 100% SIDE-EFFECT FREE.
-    // Zero calls to any @cofhe/sdk or environment-sensitive logic.
   }
 
   /**
    * Initializes the internal WASM and KMS keys.
-   * MUST be called and awaited before any encryption.
-   * Uses a global singleton pattern to be 100% safe in Next.js/React.
+   * GATED: Resolves silently during Next.js build/prerender to prevent crashes.
    */
   async init(): Promise<void> {
     if (globalIsReady) return;
     if (globalInitPromise) return globalInitPromise;
 
+    // DETECT BUILD ENVIRONMENT:
+    // If we are in a Next.js build phase (Prerendering), we MUST NOT load @cofhe/sdk.
+    const isNextBuild =
+        typeof process !== 'undefined' &&
+        (process.env.NEXT_PHASE === 'phase-production-build' || process.env.IS_NEXT_BUILD === 'true');
+
+    // DETECT SERVER-SIDE RENDERING:
+    const isSSR = typeof window === 'undefined';
+
+    // If we are in a build/prerender phase, we resolve early.
+    // This allows the build to finish while the actual encryption happens only in the browser.
+    if (isNextBuild && isSSR) {
+        console.log("[VeilPay SDK] Build phase detected. Skipping CoFHE load to prevent crash.");
+        return Promise.resolve();
+    }
+
     globalInitPromise = (async () => {
       try {
-        // DYNAMIC IMPORT: Completely prevents @cofhe/sdk from loading
-        // during static analysis or prerendering phases.
-        const { createCofhesdkClientBase } = await import("@cofhe/sdk");
+        // DYNAMIC IMPORT: Shield build-time analysis from environment-sensitive code.
+        const sdkModule = await import("@cofhe/sdk");
+
+        // Handle different export patterns (default vs named)
+        const createClient = sdkModule.createCofhesdkClientBase || (sdkModule as any).default?.createCofhesdkClientBase;
+
+        if (!createClient) {
+            throw new Error("Could not find createCofhesdkClientBase in @cofhe/sdk");
+        }
 
         const memoryStorageInstance = this.getMemoryStorage();
 
-        // ULTRA-ROBUST STORAGE WRAPPER:
-        // Guaranteed to exist and never crash, even if window/localStorage is partially defined.
+        // ULTRA-ROBUST STORAGE WRAPPER
         const safeStorage = {
           getItem: (key: string) => {
             try {
@@ -80,12 +96,11 @@ export class VeilPayCoFHE {
           }
         };
 
-        // Initialize the client ONLY once at runtime.
-        globalClient = createCofhesdkClientBase({
+        // Initialize the client once at runtime.
+        globalClient = createClient({
           fheKeyStorage: safeStorage,
         } as any);
 
-        // Explicitly trigger internal initialization of the @cofhe/sdk engine
         if (typeof globalClient.init === "function") {
           await globalClient.init();
         }
@@ -93,7 +108,8 @@ export class VeilPayCoFHE {
         globalIsReady = true;
         console.log("[VeilPay SDK] CoFHE Global Singleton initialized successfully.");
       } catch (error: any) {
-        globalInitPromise = null; // Reset promise so user can retry on failure
+        globalInitPromise = null;
+        console.error("[VeilPay SDK] Initialization failed:", error);
         throw new VeilPayInitError(error.message || "CoFHE Initialization Failed");
       }
     })();
@@ -101,37 +117,34 @@ export class VeilPayCoFHE {
     return globalInitPromise;
   }
 
-  /**
-   * Checks if the client is fully initialized and ready to encrypt.
-   */
   isClientReady(): boolean {
     return globalIsReady;
   }
 
-  /**
-   * Encrypts a number (USDC/Amount) for InEuint128 contract input.
-   */
   async encryptAmount(amount: number, decimals: number = 6): Promise<CoFHEStruct> {
     await this.ensureReady();
+    if (!globalClient) {
+        throw new VeilPayEncryptionError("SDK called during build/SSR. Encryption is only available at runtime.");
+    }
     const wei = BigInt(Math.floor(amount * Math.pow(10, decimals)));
     const result = await globalClient.encryptUint128(wei);
     return this.toStruct(result);
   }
 
-  /**
-   * Encrypts an Ethereum address for InEaddress contract input.
-   */
   async encryptAddress(address: string): Promise<CoFHEStruct> {
     await this.ensureReady();
+    if (!globalClient) {
+        throw new VeilPayEncryptionError("SDK called during build/SSR. Encryption is only available at runtime.");
+    }
     const result = await globalClient.encryptAddress(address);
     return this.toStruct(result);
   }
 
-  /**
-   * Generates a CoFHE permit for viewing encrypted data.
-   */
   async generatePermit(contractAddress: string, provider: any): Promise<any> {
     await this.ensureReady();
+    if (!globalClient) {
+        throw new VeilPayEncryptionError("SDK called during build/SSR. Permits are only available at runtime.");
+    }
     try {
       return await globalClient.generatePermit(contractAddress, provider);
     } catch (error: any) {
@@ -139,9 +152,6 @@ export class VeilPayCoFHE {
     }
   }
 
-  /**
-   * Validates if an object is a complete CoFHE struct required by the contract.
-   */
   validateStruct(struct: any): boolean {
     return (
       struct &&
@@ -154,7 +164,6 @@ export class VeilPayCoFHE {
 
   private async ensureReady() {
     if (!globalIsReady) {
-      console.warn("[VeilPay SDK] Auto-initializing...");
       await this.init();
     }
   }
