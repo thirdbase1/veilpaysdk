@@ -15,13 +15,13 @@ export interface UseVeilPayResult {
  * 3. Error state for UI feedback.
  * 4. Automatic "isReady" flag for UI components (buttons, loaders).
  */
-export function useVeilPayCoFHE(network: 'sepolia' | 'mainnet' = 'sepolia'): UseVeilPayResult {
+export function useVeilPayCoFHE(config: any = 'sepolia'): UseVeilPayResult {
     const [sdk, setSdk] = useState<VeilPayCoFHE | null>(null);
     const [isReady, setIsReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // Ensure we only create the instance once
-    const sdkInstance = useMemo(() => new VeilPayCoFHE(network), [network]);
+    const sdkInstance = useMemo(() => new VeilPayCoFHE(config), [config]);
 
     useEffect(() => {
         let isMounted = true;
