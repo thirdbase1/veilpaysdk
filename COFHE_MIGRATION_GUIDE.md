@@ -7,17 +7,17 @@ Remove all manual imports of `@cofhe/sdk` and `fhenixjs` from the site's fronten
 
 ---
 
-### 1. Build-Safe & Concurrent-Safe (v1.2.0 Update)
+### 1. Build-Ready & Environment-Gated (v1.3.0 Update)
 
 **❌ THE OLD PROBLEM:**
-Even with lazy initialization, React's concurrent rendering or multiple component mounts could trigger multiple CoFHE initializations, leading to:
+Next.js projects often crash during the `next build` (prerendering) phase with the error:
 `TypeError: Cannot read properties of undefined (reading 'fheKeyStorage')`
 
-**✅ THE v1.2.0 FIX (Final & Robust):**
-`veilpaysdk` now implements a **Global Singleton State** and **Module-Level Locking**.
-- **Side-Effect Free Constructor:** Instantiating `VeilPayCoFHE` or `VeilPayContract` is now **100% safe** in any environment (SSR, Prerender, Node.js) as it performs zero logic.
-- **Global Init Promise:** The `init()` call uses a shared global promise. Even if 10 components call `init()` at the same time, the SDK is only loaded and initialized **ONCE**.
-- **Dynamic Import Barrier:** The environment-sensitive `@cofhe/sdk` is only imported at the moment of the first runtime `init()` call, completely shielding your build process from its internal crashes.
+**✅ THE v1.3.0 FIX (Build-Proof):**
+`veilpaysdk` now implements **Environment Gating**.
+- **Build Isolation:** If the SDK detects it is running inside a Next.js build worker (`NEXT_PHASE`), it **completely skips** loading the environment-sensitive `@cofhe/sdk`.
+- **Runtime Activation:** The SDK automatically "wakes up" and initializes the CoFHE engine as soon as it detects a real runtime environment (Browser or live Node.js).
+- **Concurrent-Safe:** Shared global promise prevents race conditions in React.
 
 ---
 
