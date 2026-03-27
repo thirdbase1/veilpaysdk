@@ -1,11 +1,12 @@
 {
   "name": "veilpaysdk",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "Fhenix CoFHE wrapper for VeilPay Private Invoicing",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "dependencies": {
     "@cofhe/sdk": "^0.1.0",
