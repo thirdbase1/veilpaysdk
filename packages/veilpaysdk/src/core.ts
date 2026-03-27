@@ -22,9 +22,19 @@ export class VeilPayCoFHE {
   private initPromise: Promise<void> | null = null;
 
   constructor(_network: "sepolia" | "mainnet" = "sepolia") {
-    // Detect environment for storage mock
-    const isServer = typeof window === "undefined";
-    const storageOptions = isServer ? this.getMemoryStorage() : undefined;
+    // ROBUST ENVIRONMENT DETECTION:
+    // Some browsers or server environments hide window/localStorage.
+    // We always provide a fallback to prevent the 'fheKeyStorage' error.
+    let storageOptions;
+    try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+            storageOptions = window.localStorage;
+        } else {
+            storageOptions = this.getMemoryStorage();
+        }
+    } catch (e) {
+        storageOptions = this.getMemoryStorage();
+    }
 
     // Use the base factory function for cross-environment support
     // (Note: @cofhe/sdk default is sepolia; network is handled internally)
