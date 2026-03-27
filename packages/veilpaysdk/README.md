@@ -1,4 +1,4 @@
-# 🛡️ veilpaysdk (v1.0.8)
+# 🛡️ veilpaysdk (v1.0.9)
 
 **veilpaysdk** is the ultimate, production-grade SDK for **Fhenix CoFHE** private invoicing. It is designed to be "unbreakable," solving all environment crashes, initialization race conditions, and contract complexities in one package.
 
@@ -76,6 +76,9 @@ export async function POST(req: Request) {
 ---
 
 ## 📅 Changelog
+
+### v1.0.9
+-   **Fix:** Explicitly included `README.md` in NPM package files to ensure documentation is visible on NPMjs.com.
 
 ### v1.0.8 (Ultimate Release)
 -   **Fixed:** Hardened environment detection to eliminate the `fheKeyStorage` error in all browser/server contexts.

@@ -22,24 +22,47 @@ export class VeilPayCoFHE {
   private initPromise: Promise<void> | null = null;
 
   constructor(_network: "sepolia" | "mainnet" = "sepolia") {
-    // ROBUST ENVIRONMENT DETECTION:
-    // Some browsers or server environments hide window/localStorage.
-    // We always provide a fallback to prevent the 'fheKeyStorage' error.
-    let storageOptions;
-    try {
-        if (typeof window !== 'undefined' && window.localStorage) {
-            storageOptions = window.localStorage;
-        } else {
-            storageOptions = this.getMemoryStorage();
-        }
-    } catch (e) {
-        storageOptions = this.getMemoryStorage();
-    }
+    // ULTRA-ROBUST ENVIRONMENT DETECTION:
+    // Next.js and some specific browser configurations can still crash if we reference
+    // 'window' or 'localStorage' even with a typeof check if the SDK itself
+    // attempts to access it later.
 
-    // Use the base factory function for cross-environment support
-    // (Note: @cofhe/sdk default is sepolia; network is handled internally)
+    const memoryStorageInstance = this.getMemoryStorage();
+
+    // We wrap the storage in a proxy-like object to ensure no undefined access
+    const safeStorage = {
+      getItem: (key: string) => {
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            return window.localStorage.getItem(key);
+          }
+        } catch (e) {}
+        return memoryStorageInstance.getItem(key);
+      },
+      setItem: (key: string, value: string) => {
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.setItem(key, value);
+            return;
+          }
+        } catch (e) {}
+        memoryStorageInstance.setItem(key, value);
+      },
+      removeItem: (key: string) => {
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            window.localStorage.removeItem(key);
+            return;
+          }
+        } catch (e) {}
+        memoryStorageInstance.removeItem(key);
+      }
+    };
+
+    // Use the base factory function for cross-environment support.
+    // We pass our safeStorage wrapper directly.
     this.client = createCofhesdkClientBase({
-      fheKeyStorage: storageOptions,
+      fheKeyStorage: safeStorage,
     } as any) as CofhesdkClient;
   }
 
