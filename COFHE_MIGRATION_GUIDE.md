@@ -7,17 +7,26 @@ Remove all manual imports of `@cofhe/sdk` and `fhenixjs` from the site's fronten
 
 ---
 
-### 1. Build-Ready & Environment-Gated (v1.3.0 Update)
+### 1. Build-Safe & Bulletproof (v1.4.0 Update)
 
-**❌ THE OLD PROBLEM:**
+**❌ THE PERSISTENT PROBLEM:**
 Next.js projects often crash during the `next build` (prerendering) phase with the error:
 `TypeError: Cannot read properties of undefined (reading 'fheKeyStorage')`
 
-**✅ THE v1.3.0 FIX (Build-Proof):**
-`veilpaysdk` now implements **Environment Gating**.
-- **Build Isolation:** If the SDK detects it is running inside a Next.js build worker (`NEXT_PHASE`), it **completely skips** loading the environment-sensitive `@cofhe/sdk`.
-- **Runtime Activation:** The SDK automatically "wakes up" and initializes the CoFHE engine as soon as it detects a real runtime environment (Browser or live Node.js).
-- **Concurrent-Safe:** Shared global promise prevents race conditions in React.
+**✅ THE v1.4.0 FIX (Bulletproof):**
+`veilpaysdk` now implements **Execution Environment Gating**.
+- **Build Isolation:** The SDK uses multi-signal detection (Headers, NEXT_PHASE, and Global state) to detect a build worker. If detected, it **physically blocks** the loading of `@cofhe/sdk`.
+- **Dormant Mode:** During builds, `init()` resolves immediately but leaves the engine "dormant." It only activates in a real browser or live API environment.
+- **Verification:** Exported `VEILPAY_SDK_VERSION` allows you to verify you are using the latest fix.
+
+---
+
+### 🚨 HOW TO FORCE UPDATE (Critical for Vercel)
+If you still see the error, it means Vercel is using a cached version of the old SDK. You must force a clean install:
+
+1. **Local Fix:** `pnpm update veilpaysdk` or delete `pnpm-lock.yaml`.
+2. **Vercel Fix:** Go to Project Settings -> Data Cache -> **Purge All**.
+3. **Redeploy:** Ensure your build logs show `+ veilpaysdk 1.4.0`.
 
 ---
 
@@ -26,22 +35,13 @@ Next.js projects often crash during the `next build` (prerendering) phase with t
 | Requirement | VeilPay SDK Status |
 | :--- | :--- |
 | **CoFHE Stack (@cofhe/sdk)** | ✅ Integrated internally as the primary engine. |
-| **Mandatory Permits** | ✅ New `generatePermit()` method for viewing encrypted data. |
-| **No Wagmi/RainbowKit Dependency** | ✅ Zero dependencies on Wagmi/RainbowKit. Works with raw `ethers`. |
-| **Hardhat Recommended** | ✅ Compatible with Hardhat and standard Sepolia. |
-| **React Hooks Recommended** | ✅ Includes a high-performance `useVeilPayCoFHE()` hook. |
+| **Mandatory Permits** | ✅ `generatePermit()` method for viewing encrypted data. |
+| **No Wagmi Dependency** | ✅ Zero dependencies on Wagmi/RainbowKit. Works with raw `ethers`. |
 
 ---
 
 ### 3. Frontend Migration (React/Next.js)
 
-**❌ OLD WAY (Broken/Manual):**
-```typescript
-import { CofheClient } from "@cofhe/sdk";
-// Manual init, manual waiting for WASM, manual struct construction
-```
-
-**✅ NEW WAY (Using `veilpaysdk`):**
 ```typescript
 import { useVeilPayCoFHE, VeilPayContract } from "veilpaysdk";
 
@@ -49,13 +49,8 @@ export default function MyComponent() {
   const { sdk, isReady } = useVeilPayCoFHE("sepolia");
 
   const action = async () => {
-    // Constructor is 100% side-effect free and SSR-Safe
     const veilPay = new VeilPayContract(ADDR, ABI, signer);
-
-    // Explicit init (safe to call multiple times)
     await veilPay.init();
-
-    // Automatic encryption for InEuint128 and InEaddress
     await veilPay.createRequest(20.00, merchantAddr);
   };
 }
@@ -65,34 +60,13 @@ export default function MyComponent() {
 
 ### 4. Backend Migration (API Routes)
 
-**❌ OLD WAY (Manual Memory Mocks):**
-```typescript
-// Previously required manual storage hacks that often failed
-const memoryStorage = {};
-const client = new CofheClient({ network: "sepolia", fheKeyStorage: { ... } });
-```
-
-**✅ NEW WAY (Zero-Config Backend):**
 ```typescript
 import { VeilPayContract } from "veilpaysdk";
 
 export async function POST(req) {
-  // Constructor is safe for Node.js
   const veilPay = new VeilPayContract(ADDR, ABI, wallet);
-
-  // Storage fallback is automatic during this call
   await veilPay.init();
-
   await veilPay.submitPayment(requestId, amount);
-
-  // Handles the 20s Coprocessor delay automatically
   const success = await veilPay.waitForResolution(requestId);
 }
 ```
-
-### 🛠 INSTRUCTIONS FOR AI ASSISTANTS:
-1.  **Scan** the codebase for any `import ... from "@cofhe/sdk"` or `fhenixjs`.
-2.  **Delete** those imports and their associated initialization logic.
-3.  **Install** the new SDK: `npm install veilpaysdk`.
-4.  **Rewrite** the contract calls using the `VeilPayContract` wrapper.
-5.  **Never** construct the `{ ctHash, signature, ... }` structs manually. Let the SDK methods (`createRequest`, `submitPayment`) do it.
