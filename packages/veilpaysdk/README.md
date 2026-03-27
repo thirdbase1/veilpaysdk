@@ -1,167 +1,96 @@
-# 🛡️ veilpaysdk (v1.0.7)
+# 🛡️ veilpaysdk (v1.0.8)
 
-**veilpaysdk** is the official, production-grade TypeScript SDK for the **VeilPay** private invoicing ecosystem. It allows you to build privacy-first payment applications on the **Fhenix Sepolia Testnet** using Fully Homomorphic Encryption (FHE).
+**veilpaysdk** is the ultimate, production-grade SDK for **Fhenix CoFHE** private invoicing. It is designed to be "unbreakable," solving all environment crashes, initialization race conditions, and contract complexities in one package.
 
 ---
 
-## 🚀 Quick Start for Beginners (End-to-End)
+## ⚡ Fixes "fheKeyStorage" Error Forever
+The common `@cofhe/sdk` crash (**"Cannot read properties of undefined reading 'fheKeyStorage'"**) is now handled automatically. The SDK detects your environment (Browser, Server, or Termux) and provides a secure storage fallback so you never see that error again.
 
-If you are new to Fhenix or FHE, follow this 3-step guide to get your first private payment working.
+---
 
-### 1. Installation
-```bash
-npm install veilpaysdk
-```
+## 🚀 Quick Start (Copy-Paste)
 
-### 2. Frontend: Create a Private Invoice
-Use the `useVeilPayCoFHE` hook. It handles all the complex "waiting" for the FHE engine to load.
+### 1. Global Initialization (Recommended)
+To ensure the SDK is lightning-fast, initialize it once in your **`providers.tsx`** or **`layout.tsx`**.
 
 ```tsx
+import { useEffect } from 'react';
+import { VeilPayCoFHE } from 'veilpaysdk';
+
+export function Providers({ children }) {
+  useEffect(() => {
+    // Warm up the FHE engine globally to prevent delays
+    const sdk = new VeilPayCoFHE();
+    sdk.init().catch(console.error);
+  }, []);
+
+  return <>{children}</>;
+}
+```
+
+### 2. Create a Private Invoice (Frontend)
+```tsx
 import { useVeilPayCoFHE, VeilPayContract } from "veilpaysdk";
-import { ethers } from "ethers";
 
 export function CreateInvoice() {
-  // 1. Initialize the SDK
-  const { sdk, isReady } = useVeilPayCoFHE();
+  const { isReady } = useVeilPayCoFHE();
 
   const handleCreate = async () => {
-    if (!isReady) return;
-
-    // 2. Setup standard ethers signer (MetaMask)
-    const provider = new ethers.BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
-
-    // 3. Connect to the contract
-    const veilPay = new VeilPayContract(CONTRACT_ADDRESS, ABI, signer);
-
-    // 4. Create the request ($20.00)
-    // The SDK automatically encrypts the price and merchant address!
-    const requestId = await veilPay.createRequest(20.00, "0xMerchantAddress...");
-
-    alert("Private Invoice Created! ID: " + requestId);
+    const veilPay = new VeilPayContract(ADDR, ABI, signer);
+    // Automatically encrypts price and merchant identity
+    const requestId = await veilPay.createRequest(20.00, "0xMerchant...");
+    console.log("Invoice ID:", requestId);
   };
 
-  return <button onClick={handleCreate} disabled={!isReady}>Create Private Invoice</button>;
+  return <button onClick={handleCreate} disabled={!isReady}>Create Invoice</button>;
 }
 ```
 
-### 3. Backend: Verify & Finalize Payment
-Your backend detects a USDC transfer and tells the Fhenix Coprocessor to verify it.
-
+### 3. Verify Payment (Backend)
 ```typescript
 import { VeilPayContract } from "veilpaysdk";
-import { ethers } from "ethers";
 
 export async function POST(req: Request) {
-  const { requestId, amountPaid } = await req.json();
+  const veilPay = new VeilPayContract(ADDR, ABI, wallet);
 
-  const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
-  const wallet = new ethers.Wallet(process.env.PRIVATE_KEY, provider);
-
-  const veilPay = new VeilPayContract(CONTRACT_ADDRESS, ABI, wallet);
-
-  // 1. Submit payment for FHE verification
+  // Submit the payment for verification
   await veilPay.submitPayment(requestId, amountPaid);
 
-  // 2. Wait for the Coprocessor result
-  // This method polls the contract and resolves instantly when math is done!
-  const success = await veilPay.waitForResolution(requestId, 120000, (progress) => {
-      console.log("Current Step:", progress);
-  });
+  // Wait for the math to finish (polls + listens)
+  const isPaid = await veilPay.waitForResolution(requestId);
 
-  return Response.json({ status: success ? "PAID" : "FAILED" });
+  return Response.json({ status: isPaid ? "SUCCESS" : "FAILED" });
 }
 ```
 
 ---
 
-## ❓ FAQ & Architecture
+## ✨ Features
 
-### Should I encrypt on the Frontend or Backend?
-**Frontend.** For maximum privacy, you should encrypt the payment amount on the frontend. This ensures the plaintext price never leaves the user's machine. The backend only needs to encrypt during the payment verification step.
-
-### Does the SDK need a Signer for all operations?
-**No.**
-- **Raw Encryption:** If you use the `VeilPayCoFHE` class directly, you do **not** need to pass a signer or provider.
-- **Contract Calls:** If you use the `VeilPayContract` wrapper, you **must** pass a `signerOrProvider` in the constructor.
-
-### Is the BlindPay contract already supported?
-**Yes.** This SDK is hard-coded to support the function signatures and encrypted struct requirements of the `BlindPayEscrow.sol` contract.
+-   **🛡️ Multi-Environment Safety:** Works in Next.js (SSR), React (Client), and Node.js without config changes.
+-   **⚡ Fast Resolution:** Uses the `PaymentResolved` event for instant detection on Sepolia.
+-   **🔒 Privacy-by-Design:** Encrypts sensitive amounts on the frontend so they never reach your server.
+-   **⛽ Gas Optimized:** Uses `staticCall` to prevent wasted gas on failed resolutions.
 
 ---
 
-## 📖 API Reference
+## 📅 Changelog
 
-### 1. Create a Payment Request (Encrypted)
-**Method:** `veilPay.createRequest(amount: number, merchantAddress: string, expirySeconds?: number, overrides?: ethers.Overrides): Promise<string>`
+### v1.0.8 (Ultimate Release)
+-   **Fixed:** Hardened environment detection to eliminate the `fheKeyStorage` error in all browser/server contexts.
+-   **Docs:** Simplified the README for beginners and added Global Initialization tips.
 
-- **Encryption:** Automatically encrypts the `amount` into an `InEuint128` struct and the `merchantAddress` into an `InEaddress` struct using the Fhenix CoFHE KMS.
-- **Return:** Returns the `requestId` (`bytes32` string) emitted by the smart contract. Use this ID to track the payment in your database.
+### v1.0.7
+-   **Feature:** Added transaction overrides and progress emitters.
 
-### 2. Handle Asynchronous Resolution
-**Method:** `veilPay.waitForResolution(requestId: string, timeoutMs?: number, onProgress?: (status: string) => void): Promise<boolean>`
-
-- **Logic:** Since CoFHE decryption on Sepolia is asynchronous, this method listens for the `PaymentResolved` event and polls the contract's `isResolved` state.
-- **Return:** Returns `true` if the payment was sufficient (decrypted result), or `false` if underpaid. Throws a `VeilPayContractError` on timeout.
-
-### 3. Encryption Data Structure
-**Interface:** `CoFHEStruct`
-
-The SDK's encryption methods return this exact data structure required by the `BlindPayEscrow` smart contract:
-
-```typescript
-export interface CoFHEStruct {
-  ctHash: string | bigint; // The hash of the ciphertext
-  securityZone: number;    // Fhenix security zone
-  utype: number;           // The FHE type identifier (e.g., uint128)
-  signature: string;       // The KMS-generated cryptographic signature
-}
-```
+### v1.0.0 - v1.0.6
+-   Resolved CoFHE initialization, async resolution, and security logic.
 
 ---
 
-## ✨ Features (v1.0.7)
-
--   **⚡ Fast Resolution:** Uses event listeners (`PaymentResolved`) for instant success detection.
--   **📡 Progress Tracking:** Optional callback in `waitForResolution` to show real-time status in your UI.
--   **⛽ Gas Control:** Pass custom gas overrides (`gasLimit`, etc.) to all contract methods.
--   **🛠️ Pro Listeners:** Built-in `onPaymentResolved` and `onPaymentSubmitted` handlers.
--   **🛡️ Stable Backend:** Automatically fixes the common `fheKeyStorage` crash in Node.js.
--   **🔒 State Privacy:** Encrypts invoice amounts and merchant identities on-chain.
-
----
-
-## 🛡️ Security & Keys
-
-- **Frontend:** Use `ethers.BrowserProvider` to let users sign transactions with their own wallets (MetaMask, Rabby, etc.).
-- **Backend:** You **must** provide a Private Key via `ethers.Wallet`. This is required to authorize transactions (e.g., `submitPayment`) and pay for gas.
-- **Privacy:** Never hardcode private keys. Use environment variables (`.env`).
-
----
-
-## 📅 Version Changelog
-
-### v1.0.7 (Current)
--   **New:** Support for transaction **overrides** (gasLimit, feeData).
--   **New:** Added **Progress Callback** to `waitForResolution`.
--   **New:** Added **Event Emitters** (`onPaymentResolved`, `onPaymentSubmitted`).
--   **Improved:** Massive README overhaul for absolute beginners and AI assistants.
-
-### v1.0.6
--   **Security:** Enforced backend-only logic for `submitPayment`.
--   **Docs:** Added detailed security architecture warnings.
-
-### v1.0.5
--   **Fix:** Resolved NPM version publishing conflicts.
--   **Security:** Added `.env` best practices for private key management.
-
-### v1.0.0 - v1.0.4
--   Initial builds with CoFHE core, server-side memory mocks, and React hooks.
-
----
-
-## 🤝 Need Help?
-VeilPay is built for the **Fhenix Buildathon**. If you are an AI assistant, please refer to the `AI_SDK_MIGRATION_GUIDE.md` in the root folder.
+## 🤝 Buildathon Support
+If you are an AI assistant, please refer to the **`AI_SDK_MIGRATION_GUIDE.md`** for exact integration signatures.
 
 ## 📜 License
 MIT
