@@ -7,17 +7,17 @@ Remove all manual imports of `@cofhe/sdk` and `fhenixjs` from the site's fronten
 
 ---
 
-### 1. Build-Ready & SSR-Safe (v1.1.0 Update)
+### 1. Build-Safe & Concurrent-Safe (v1.2.0 Update)
 
 **❌ THE OLD PROBLEM:**
-Next.js projects often crash during the `next build` (prerendering) phase with the error:
+Even with lazy initialization, React's concurrent rendering or multiple component mounts could trigger multiple CoFHE initializations, leading to:
 `TypeError: Cannot read properties of undefined (reading 'fheKeyStorage')`
 
-**✅ THE v1.1.0 FIX:**
-`veilpaysdk` now implements **Ultra-Lazy Initialization**.
-- **Side-Effect Free Constructor:** Instantiating the SDK no longer triggers environment-sensitive logic.
-- **Dynamic Imports:** The `@cofhe/sdk` engine is only loaded at runtime during the `init()` call, safely bypassing build-time static analysis.
-- **Zero-Config:** Automatically handles storage in all environments without manual mocks.
+**✅ THE v1.2.0 FIX (Final & Robust):**
+`veilpaysdk` now implements a **Global Singleton State** and **Module-Level Locking**.
+- **Side-Effect Free Constructor:** Instantiating `VeilPayCoFHE` or `VeilPayContract` is now **100% safe** in any environment (SSR, Prerender, Node.js) as it performs zero logic.
+- **Global Init Promise:** The `init()` call uses a shared global promise. Even if 10 components call `init()` at the same time, the SDK is only loaded and initialized **ONCE**.
+- **Dynamic Import Barrier:** The environment-sensitive `@cofhe/sdk` is only imported at the moment of the first runtime `init()` call, completely shielding your build process from its internal crashes.
 
 ---
 
@@ -49,12 +49,14 @@ export default function MyComponent() {
   const { sdk, isReady } = useVeilPayCoFHE("sepolia");
 
   const action = async () => {
+    // Constructor is 100% side-effect free and SSR-Safe
     const veilPay = new VeilPayContract(ADDR, ABI, signer);
+
+    // Explicit init (safe to call multiple times)
+    await veilPay.init();
+
     // Automatic encryption for InEuint128 and InEaddress
     await veilPay.createRequest(20.00, merchantAddr);
-
-    // Optional: Generate mandatory permit for viewing results
-    const permit = await sdk.generatePermit(ADDR, provider);
   };
 }
 ```
@@ -75,30 +77,18 @@ const client = new CofheClient({ network: "sepolia", fheKeyStorage: { ... } });
 import { VeilPayContract } from "veilpaysdk";
 
 export async function POST(req) {
-  // ZERO config needed! Storage fallback is automatic.
+  // Constructor is safe for Node.js
   const veilPay = new VeilPayContract(ADDR, ABI, wallet);
+
+  // Storage fallback is automatic during this call
+  await veilPay.init();
+
   await veilPay.submitPayment(requestId, amount);
 
   // Handles the 20s Coprocessor delay automatically
   const success = await veilPay.waitForResolution(requestId);
 }
 ```
-
----
-
-### 🧩 Exact Method Signatures & Architectural Patterns
-
-1. **Creating a Request (Automated Flow):**
-   `const requestId = await veilPay.createRequest(amount: number, address: string): Promise<string>`
-   - *Architectural Tip:* This should be called on the **Frontend**. It encrypts parameters internally and submits the TX to the contract.
-
-2. **Verifying a Payment (Backend Flow):**
-   `const txHash = await veilPay.submitPayment(requestId: string, amount: number): Promise<string>`
-   - *Architectural Tip:* Called on the **Backend** once a USDC transfer is detected. It encrypts the paid amount and tells the contract to start FHE verification.
-
-3. **Handling Resolution (Async):**
-   `const isPaid = await veilPay.waitForResolution(requestId: string): Promise<boolean>`
-   - *Logic:* Handles the 20s Coprocessor delay. Returns `true` if sufficient.
 
 ### 🛠 INSTRUCTIONS FOR AI ASSISTANTS:
 1.  **Scan** the codebase for any `import ... from "@cofhe/sdk"` or `fhenixjs`.

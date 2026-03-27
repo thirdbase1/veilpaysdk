@@ -1,11 +1,11 @@
-# 🛡️ veilpaysdk (v1.1.0)
+# 🛡️ veilpaysdk (v1.2.0)
 
 **veilpaysdk** is the ultimate, production-grade SDK for **Fhenix CoFHE** private invoicing. It is designed to be "unbreakable," solving all environment crashes, initialization race conditions, and contract complexities in one package.
 
 ---
 
-## ⚡ SSR & Prerender Safe (Fixed in v1.1.0)
-The common `@cofhe/sdk` crash (**"Cannot read properties of undefined reading 'fheKeyStorage'"**) during Next.js builds (`next build`) or server-side rendering is now fully resolved. The SDK uses **Ultra-Lazy Initialization**, ensuring that the environment-sensitive CoFHE engine is only loaded and initialized when explicitly called at runtime.
+## ⚡ Build-Safe & Concurrent-Safe (Fixed in v1.2.0)
+The common `@cofhe/sdk` crash (**"Cannot read properties of undefined reading 'fheKeyStorage'"**) during Next.js builds (`next build`) or React's concurrent rendering is now fully resolved. The SDK uses **Ultra-Lazy Global Initialization**, ensuring that the environment-sensitive CoFHE engine is only loaded and initialized once across the entire application lifecycle, safely at runtime.
 
 ---
 
@@ -22,6 +22,7 @@ export function Providers({ children }) {
   useEffect(() => {
     // Warm up the FHE engine globally to prevent delays
     const sdk = new VeilPayCoFHE();
+    // init() is now global and concurrent-safe!
     sdk.init().catch(console.error);
   }, []);
 
@@ -37,7 +38,12 @@ export function CreateInvoice() {
   const { isReady } = useVeilPayCoFHE();
 
   const handleCreate = async () => {
+    // Constructor is 100% side-effect free and SSR-Safe
     const veilPay = new VeilPayContract(ADDR, ABI, signer);
+
+    // Explicit init (safe to call multiple times)
+    await veilPay.init();
+
     // Automatically encrypts price and merchant identity
     const requestId = await veilPay.createRequest(20.00, "0xMerchant...");
     console.log("Invoice ID:", requestId);
@@ -47,54 +53,31 @@ export function CreateInvoice() {
 }
 ```
 
-### 3. Verify Payment (Backend)
-```typescript
-import { VeilPayContract } from "veilpaysdk";
-
-export async function POST(req: Request) {
-  const veilPay = new VeilPayContract(ADDR, ABI, wallet);
-
-  // Submit the payment for verification
-  await veilPay.submitPayment(requestId, amountPaid);
-
-  // Wait for the math to finish (polls + listens)
-  const isPaid = await veilPay.waitForResolution(requestId);
-
-  return Response.json({ status: isPaid ? "SUCCESS" : "FAILED" });
-}
-```
-
 ---
 
 ## ✨ Features
 
 -   **🛡️ Multi-Environment Safety:** Works in Next.js (SSR), React (Client), and Node.js without config changes.
--   **⚡ Fast Resolution:** Uses the `PaymentResolved` event for instant detection on Sepolia.
--   **🔒 Privacy-by-Design:** Encrypts sensitive amounts on the frontend so they never reach your server.
+-   **⚡ Global Singleton:** Ensures initialization happens exactly once across your entire application.
+-   **🔒 Build-Safe:** Dynamic imports prevent `@cofhe/sdk` from crashing your static builds.
 -   **⛽ Gas Optimized:** Uses `staticCall` to prevent wasted gas on failed resolutions.
 
 ---
 
 ## 📅 Changelog
 
+### v1.2.0 (The Final Robust Release)
+-   **Fixed:** Implemented **Global Singleton Initialization** to prevent concurrent race conditions during React's render phase.
+-   **Fixed:** Guaranteed side-effect free constructor to prevent crashes during Next.js static page generation.
+-   **Added:** Support for concurrent `init()` calls sharing a single underlying promise.
+
 ### v1.1.0 (The Build-Safe Release)
 -   **Fixed:** Implemented **Ultra-Lazy Initialization** using dynamic imports to prevent the `@cofhe/sdk` from crashing during Next.js `next build` (prerendering) or SSR.
--   **Fixed:** Side-effect free constructor in `VeilPayCoFHE` to ensure it can be safely instantiated anywhere.
--   **Added:** `generatePermit()` method for mandatory CoFHE stack compliance.
 
-### v1.0.9
--   **Fix:** Explicitly included `README.md` in NPM package files to ensure documentation is visible on NPMjs.com.
-
-### v1.0.8 (Ultimate Release)
--   **Fixed:** Hardened environment detection to eliminate the `fheKeyStorage` error in all browser/server contexts.
-
-### v1.0.0 - v1.0.7
+### v1.0.0 - v1.0.9
 -   Resolved CoFHE initialization, async resolution, and security logic.
 
 ---
-
-## 🤝 Buildathon Support
-If you are an AI assistant, please refer to the **`COFHE_MIGRATION_GUIDE.md`** for exact integration signatures.
 
 ## 📜 License
 MIT
