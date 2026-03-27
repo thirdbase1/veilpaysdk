@@ -8,8 +8,8 @@ def sanitize_filename(name):
     Sanitizes a string to be safe for filenames.
     Removes characters that are unsafe for filenames on Windows/Linux.
     """
-    # Remove invalid characters
-    name = re.sub(r'[<>:"/\\|?*]', '', name)
+    # Remove invalid characters, including shell-sensitive ones
+    name = re.sub(r'[<>:"/\\|?*$`&;()\[\]#!]', '', name)
     # Collapse whitespaces
     name = re.sub(r'\s+', ' ', name).strip()
     return name

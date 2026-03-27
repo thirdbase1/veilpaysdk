@@ -1,6 +1,7 @@
 import os
 import asyncio
 import time
+import shlex
 import uuid
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -233,10 +234,16 @@ class BotHandlers:
 
             if total_parts > 1:
                 # Generate specific merge instructions
-                filenames = [f'"{os.path.basename(c)}"' for c in chunks]
                 safe_title = sanitize_filename(title)
-                linux_cmd = f"cat {' '.join(filenames)} > \"{safe_title} - Full.mp4\""
-                windows_cmd = f"copy /b {'+'.join(filenames)} \"{safe_title} - Full.mp4\""
+
+                # Linux/macOS command (using shlex.quote for safety)
+                linux_filenames = [shlex.quote(os.path.basename(c)) for c in chunks]
+                linux_output = shlex.quote(f"{safe_title} - Full.mp4")
+                linux_cmd = f"cat {' '.join(linux_filenames)} > {linux_output}"
+
+                # Windows CMD command (using double quotes)
+                win_filenames = [f'"{os.path.basename(c)}"' for c in chunks]
+                windows_cmd = f"copy /b {'+'.join(win_filenames)} \"{safe_title} - Full.mp4\""
 
                 # Truncate if too long (Telegram limit 4096 chars)
                 if len(linux_cmd) > 1000:
