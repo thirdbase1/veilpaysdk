@@ -17,30 +17,21 @@ If you are building the frontend/backend for this contract on Sepolia, **you MUS
 
 ---
 
-## 🛡️ The `veilpaysdk` (v1.2.0)
-The repository now includes an **Ultra-Robust, Build-Safe, and Concurrent-Safe SDK** that fixes all environment crashes:
-- **Prerender & SSR-Safe:** New **Global Singleton Lazy Initialization** ensures the SDK never crashes during `next build` or server-side rendering.
-- **Concurrent-Safe:** Multiple `init()` calls across your React application share a single underlying promise, preventing initialization race conditions.
-- **Zero-Config Backend:** Automatically handles the `fheKeyStorage` error in Node.js.
-- **Buildathon Compliant:** Includes built-in support for mandatory CoFHE permits.
+## 🛡️ The `veilpaysdk` (v1.6.0)
+The repository now includes a **Network-Aware and UX-Optimized SDK**:
+- **Double-RPC Architecture:** Explicitly supports Fhenix for encryption and Sepolia for transactions.
+- **Pre-flight Validation:** Catches configuration errors before starting the engine.
+- **Initialization Watchdog:** 45-second timeout with descriptive error messages.
+- **Prerender & SSR-Safe:** Intelligent environment gating for Next.js and Vercel.
 
 ### Quick Start (Frontend)
 ```typescript
 import { useVeilPayCoFHE, VeilPayContract } from "veilpaysdk";
 
 // In your React Component
-const { isReady } = useVeilPayCoFHE();
+const { isReady, error } = useVeilPayCoFHE();
 const veilPay = new VeilPayContract(ADDR, ABI, signer);
 const requestId = await veilPay.createRequest(20.00, merchantAddr);
-```
-
-### Quick Start (Backend)
-```typescript
-import { VeilPayContract } from "veilpaysdk";
-
-const veilPay = new VeilPayContract(ADDR, ABI, wallet);
-await veilPay.submitPayment(requestId, amountPaid);
-const isPaid = await veilPay.waitForResolution(requestId); // Polls and listens for you
 ```
 
 ---
