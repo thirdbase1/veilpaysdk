@@ -8,43 +8,44 @@ On standard blockchains like Ethereum or Sepolia, **Privacy is impossible.**
 2.  **Buyer Privacy:** Everyone knows exactly how much a buyer spent and on what.
 
 ### ✅ The Solution: VeilPay
-VeilPay uses Fhenix CoFHE to create "Blind Invoices" that leverage **State Privacy.**
+VeilPay uses Fhenix CoFHE to create "Blind Invoices" that leverage **State Privacy** and **Infrastructure Anonymity.**
 
-- **Encrypted Amounts (`euint128`):** The requested price is encrypted via CoFHE KMS before it hits the blockchain.
-- **Encrypted Merchant Identity (`eaddress`):** The merchant's address stored inside the contract is encrypted.
-- **On-Chain Math:** The contract calculates `FHE.gte(submitted, required)` inside the encryption.
+- **Encrypted State:** Invoice prices and merchant identities are stored as encrypted ciphertexts hits the blockchain.
+- **Meaningful Computation:** The contract evaluates `FHE.gte(submitted, required)` inside the encryption.
 
 ---
 
-## 🏗️ Technical Architecture: Payment Verification
+## 🏗️ Technical Architecture: The Professional Bridge
 
-VeilPay provides a secure bridge between standard USDC transfers and confidential FHE verification.
+VeilPay implements a **One-Time Sub-address** model to break the on-chain link between users and merchants.
 
-### 1. USDC Monitoring (The Oracle Phase)
-The authorized backend (Oracle) monitors the **Sepolia USDC Contract** (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) for `Transfer` events.
+### 1. HD Wallet Derivation (Anonymity)
+For every invoice, the system generates a unique, one-time Ethereum address (Sub-address) using Hierarchical Deterministic (HD) derivation.
+- **Benefit:** Observers cannot link different payments to the same platform or merchant.
+- **Identification:** Each payment hits a unique wallet, making it 100% clear which `requestId` is being settled without needing public memo fields.
 
-- **Trigger:** When a user pays USDC to the bridge, the backend captures the transaction.
-- **Verification:** The backend confirms the amount sent matches the intended payment for a specific `requestId`.
+### 2. USDC Monitoring (The Oracle Phase)
+The backend monitors the **Sepolia USDC Contract** (`0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`) for incoming transfers to these sub-addresses.
 
-### 2. Confidential Submission
-Once the backend verifies the USDC transfer in plaintext, it performs a **Confidential Submission**:
-1.  Backend encrypts the *actual* amount paid via the CoFHE KMS.
-2.  Backend calls `submitPayment(requestId, encryptedPaidAmount)` on the `BlindPayEscrow` contract.
-3.  The contract triggers the Fhenix Coprocessor to evaluate the sufficiency of the payment WITHOUT revealing the amount.
+### 3. Confidential Verification
+Once USDC is detected, the backend performs a **Confidential Submission**:
+1.  Backend encrypts the paid amount via the CoFHE KMS.
+2.  Backend calls `submitPayment(requestId, encryptedAmount)`.
+3.  The Fhenix Coprocessor proves the payment sufficiency without revealing the values.
 
 ---
 
 ## 🛠 Architectural Flow: Site + Database + SDK
 
-Since the blockchain is "blind," you must use a database to bridge the gap.
+Since the blockchain is "blind," VeilPay uses an off-chain bridge to maintain the privacy-link.
 
 ### 1. Creation (Frontend)
-- **SDK:** `veilPay.createRequest(20.00, address)` encrypts the data and submits to the contract.
-- **Database Save:** Your site captures the emitted `requestId` and saves it to your database.
+- **SDK:** `veilPay.createRequest(20.00, address)` encrypts data on the frontend.
+- **Database:** Captures the `requestId` and stores the plaintext merchant address privately.
 
 ### 2. Resolution (The Coprocessor Cycle)
 - **Polling:** The SDK (`waitForResolution`) polls the contract for the `PaymentResolved` event.
-- **Status Update:** Once the Fhenix Coprocessor returns `true` (sufficient payment), your site updates the database to `"paid"`.
+- **Status Update:** Once confirmed by Fhenix, the site updates the database to `"paid"` and settles the USDC to the merchant.
 
 ---
 
@@ -53,5 +54,5 @@ VeilPay solves a real-world $500B problem: **The lack of enterprise-grade privac
 
 By building VeilPay, you are enabling:
 1.  **Private B2B Invoicing:** Companies can pay each other confidentially.
-2.  **Encrypted E-commerce:** Merchants can accept crypto without competitors seeing sales volume.
+2.  **Encrypted E-commerce:** Merchants can accept crypto without competitors seeing volume.
 3.  **Compliance-First Architecture:** Maintaining privacy on-chain while allowing private records off-chain for audits.
