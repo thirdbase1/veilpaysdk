@@ -21,51 +21,46 @@ Next.js projects often crash during the `next build` phase with the error:
 
 ---
 
-### 2. Simple Configuration: Environment Variables
-With the new **Bridge Architecture**, you no longer need a separate `BACKEND_PRIVATE_KEY`. Everything is derived from your **Master Mnemonic**.
+### 2. High-Performance Bridge Architecture
+To support large-scale payment tracking without public memos, use the "Global Listener" pattern.
 
-| Variable | Scope | Purpose |
-| :--- | :--- | :--- |
-| **`NEXT_PUBLIC_FHENIX_RPC_URL`** | Frontend/Backend | Required for CoFHE KMS encryption (WASM). |
-| **`SEPOLIA_RPC_URL`** | Backend | Standard RPC for monitoring USDC and transactions. |
-| **`MASTER_BRIDGE_MNEMONIC`** | **PRIVATE (Backend)** | Secret 12/24 words used to derive ALL payment wallets. |
+**Implementation Flow:**
+1.  **Backend (Invoice Creation):**
+    - Derive `subAddress` via `VeilPayBridge.deriveAddress(mnemonic, index)`.
+    - Save `{ requestId, subAddress, index }` to Supabase.
+2.  **Frontend (One-Click Pay):**
+    ```typescript
+    const veilPay = new VeilPayContract(ADDR, ABI, userSigner);
+    await veilPay.payRequest(subAddress, amount); // Automated USDC transfer
+    ```
+3.  **Backend (Parallel Detection):**
+    Instead of checking addresses one by one, listen for ALL USDC transfers globally. This supports millions of sub-addresses simultaneously.
+    ```typescript
+    const usdc = new ethers.Contract(USDC_ADDR, USDC_ABI, provider);
+    usdc.on("Transfer", async (from, to, value) => {
+        // Instant check in your DB
+        const req = await supabase.from('requests').select().eq('sub_address', to).single();
+        if (req) {
+            const veilPay = new VeilPayContract(ADDR, ABI, oracleSigner);
+            await veilPay.submitPayment(req.request_id, amount);
+        }
+    });
+    ```
 
 ---
 
-### 3. Professional Bridge Flow (One-Time Addresses)
-Use the `VeilPayBridge` utility to manage your payment gateway securely.
+### 3. Simple Configuration: Environment Variables
 
-**Recommended Supabase Schema:**
-```sql
-CREATE TABLE requests (
-  id uuid PRIMARY KEY,
-  request_id bytes32 UNIQUE,   -- From Fhenix Contract
-  sub_address address UNIQUE, -- Derived from SDK (index N)
-  merchant_address address,    -- Plaintext (Private in DB)
-  wallet_index integer,        -- The HD index used (0, 1, 2...)
-  status text DEFAULT 'pending'
-);
-```
-
-**Backend Implementation:**
-```typescript
-import { VeilPayBridge, VeilPayContract } from 'veilpaysdk';
-
-// 1. Derive one-time payment address for a new customer
-const subAddress = VeilPayBridge.deriveAddress(process.env.MASTER_BRIDGE_MNEMONIC, index);
-
-// 2. Create the Oracle Signer (using index 0 for the main backend tasks)
-const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
-const backendSigner = VeilPayBridge.createBridgeSigner(process.env.MASTER_BRIDGE_MNEMONIC, 0, provider);
-
-// 3. Initialize Contract with derived backend signer
-const veilPay = new VeilPayContract(ADDR, ABI, backendSigner);
-```
+| Variable | Recommended Value | Purpose |
+| :--- | :--- | :--- |
+| **`NEXT_PUBLIC_FHENIX_RPC_URL`** | `https://api.sepolia.fhenix.zone` | Powers the KMS encryption (WASM). |
+| **`SEPOLIA_RPC_URL`** | `https://ethereum-sepolia-rpc.publicnode.com` | Standard RPC for monitoring USDC. |
+| **`MASTER_BRIDGE_MNEMONIC`** | **PRIVATE (Backend)** | Seed used to derive ALL payment wallets. |
 
 ---
 
 ### 🛠 INSTRUCTIONS FOR AI ASSISTANTS:
 1.  **Delete** all manual storage mocks and `@cofhe/sdk` imports.
-2.  **Use** `MASTER_BRIDGE_MNEMONIC` to derive wallets; do not ask for a private key.
-3.  **Ensure** transactions are sent via standard Sepolia RPC, while encryption uses the Fhenix RPC.
-4.  **Force Update:** If you see build errors, purge Vercel cache and redeploy to ensure v1.7.0 is active.
+2.  **Use** `VeilPayBridge` for generating payment sub-addresses in the backend.
+3.  **Implement** the global "Transfer" listener for parallel payment detection.
+4.  **Redeploy** with `pnpm update veilpaysdk` to ensure v1.7.0 is active.
