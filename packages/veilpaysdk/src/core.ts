@@ -22,14 +22,17 @@ let globalClient: any = null;
 let globalInitPromise: Promise<void> | null = null;
 let globalIsReady = false;
 
+// OFFICIAL FHENIX SEPOLIA INFRASTRUCTURE
+const DEFAULT_KMS_URL = "https://kms.sepolia.fhenix.zone";
+const DEFAULT_RPC_URL = "https://api.sepolia.fhenix.zone";
+
 /**
  * PRODUCTION-GRADE Fhenix CoFHE Wrapper for VeilPay (v1.7.0)
  *
- * v1.7.0 FEATURES:
- * 1. Double-RPC Validation: Ensures a Fhenix-compatible RPC is used for KMS.
- * 2. Pre-flight Checks: Catches missing environment variables BEFORE loading WASM.
- * 3. Warm-up Ready: Optimized for background initialization.
- * 4. Enterprise Resilience: Shared global singleton promise with hardened failure paths.
+ * v1.7.0 Final Revision (Runtime Bulletproofing):
+ * 1. Fixed "fheKeyStorage" error via simplified storage mapping.
+ * 2. Hardened dynamic client instantiation.
+ * 3. Detailed browser console logging for micro-step debugging.
  */
 export class VeilPayCoFHE {
   private config: VeilPayConfig;
@@ -40,25 +43,6 @@ export class VeilPayCoFHE {
     } else {
         this.config = config;
     }
-
-    // Auto-detect RPC from environment if not provided.
-    if (!this.config.rpcUrl && typeof process !== 'undefined') {
-        this.config.rpcUrl = process.env.FHENIX_RPC_URL || process.env.NEXT_PUBLIC_FHENIX_RPC_URL;
-    }
-  }
-
-  /**
-   * Returns metadata about the current SDK state.
-   * Useful for debugging UI hangs.
-   */
-  getSDKMetadata() {
-      return {
-          version: VEILPAY_SDK_VERSION,
-          isReady: globalIsReady,
-          isBuilding: this.isBuilding(),
-          hasClient: !!globalClient,
-          network: this.config.network || 'sepolia'
-      };
   }
 
   private isBuilding(): boolean {
@@ -67,19 +51,6 @@ export class VeilPayCoFHE {
         (process.env.NEXT_PHASE === 'phase-production-build' ||
          process.env.IS_NEXT_BUILD === 'true' ||
          (process.env.NODE_ENV === 'production' && !process.env.VERCEL_URL));
-  }
-
-  /**
-   * Performs basic validation of the environment and configuration.
-   */
-  private validatePreflight() {
-    if (!this.config.rpcUrl && this.config.network !== 'mainnet') {
-        console.warn(`[VeilPay SDK] WARNING: No rpcUrl provided. KMS encryption may fail.`);
-    }
-
-    if (this.config.rpcUrl && !this.config.rpcUrl.includes('fhenix')) {
-        console.warn(`[VeilPay SDK] WARNING: The provided rpcUrl (${this.config.rpcUrl}) may not support FHE.`);
-    }
   }
 
   /**
@@ -93,66 +64,76 @@ export class VeilPayCoFHE {
         return Promise.resolve();
     }
 
-    this.validatePreflight();
-
-    console.log(`[VeilPay SDK v${VEILPAY_SDK_VERSION}] Starting Enterprise Initialization...`);
+    console.log(`[VeilPay SDK v${VEILPAY_SDK_VERSION}] --- Runtime Initialization Started ---`);
 
     const timeoutMs = this.config.timeoutMs || 45000;
 
     globalInitPromise = new Promise(async (resolve, reject) => {
         const timer = setTimeout(() => {
             if (!globalIsReady) {
-                const err = new VeilPayInitError(`Initialization timed out (${timeoutMs}ms).`);
-                console.error(`[VeilPay SDK] TIMEOUT`, err);
-                globalInitPromise = null; // Allow retry on timeout
+                const err = new VeilPayInitError(`Initialization timed out after ${timeoutMs}ms.`);
+                console.error(`[VeilPay SDK] FATAL: Timeout. Engine failed to boot.`);
+                globalInitPromise = null;
                 reject(err);
             }
         }, timeoutMs);
 
         try {
-            console.log(`[VeilPay SDK] Stage 1: Dynamic Loading...`);
+            console.log(`[VeilPay SDK] Micro-step 1: Dynamic engine import...`);
             const sdkModule = await import("@cofhe/sdk");
-            const createClient = sdkModule.createCofhesdkClientBase || (sdkModule as any).default?.createCofhesdkClientBase;
 
-            if (!createClient) throw new Error("Invalid @cofhe/sdk exports.");
+            // Defensively extract exports
+            const sdk = (sdkModule as any).default || sdkModule;
+            const CofheClientClass = sdk.CofheClient;
+            const createClient = sdk.createCofhesdkClientBase;
 
-            const memoryStorageInstance = this.getMemoryStorage();
+            console.log(`[VeilPay SDK] Micro-step 2: Preparing safe storage...`);
+            const memoryStore: Record<string, string> = {};
             const safeStorage = {
                 getItem: (key: string) => {
-                    try { return (typeof window !== 'undefined' && window.localStorage) ? window.localStorage.getItem(key) : memoryStorageInstance.getItem(key); } catch (e) { return memoryStorageInstance.getItem(key); }
+                    try { if (typeof window !== 'undefined' && window.localStorage) return window.localStorage.getItem(key); } catch (e) {}
+                    return memoryStore[key] || null;
                 },
                 setItem: (key: string, value: string) => {
                     try { if (typeof window !== 'undefined' && window.localStorage) { window.localStorage.setItem(key, value); return; } } catch (e) {}
-                    memoryStorageInstance.setItem(key, value);
+                    memoryStore[key] = value;
                 },
                 removeItem: (key: string) => {
                     try { if (typeof window !== 'undefined' && window.localStorage) { window.localStorage.removeItem(key); return; } } catch (e) {}
-                    memoryStorageInstance.removeItem(key);
+                    delete memoryStore[key];
                 }
             };
 
-            console.log(`[VeilPay SDK] Stage 2: KMS Bridge Creation...`);
-            globalClient = createClient({
+            const finalConfig = {
                 network: this.config.network || "sepolia",
-                kmsUrl: this.config.kmsUrl,
-                rpcUrl: this.config.rpcUrl,
+                kmsUrl: this.config.kmsUrl || DEFAULT_KMS_URL,
+                rpcUrl: this.config.rpcUrl || DEFAULT_RPC_URL,
                 fheKeyStorage: safeStorage
-            } as any);
+            };
 
-            if (typeof globalClient.init === "function") {
-                console.log(`[VeilPay SDK] Stage 3: Engine Bootstrapping...`);
+            console.log(`[VeilPay SDK] Micro-step 3: Instantiating client...`);
+            if (CofheClientClass) {
+                globalClient = new CofheClientClass(finalConfig);
+            } else if (createClient) {
+                globalClient = createClient(finalConfig as any);
+            } else {
+                throw new Error("Unable to locate constructor in @cofhe/sdk.");
+            }
+
+            if (globalClient && typeof globalClient.init === "function") {
+                console.log(`[VeilPay SDK] Micro-step 4: Final engine bootstrapping...`);
                 await globalClient.init();
             }
 
             clearTimeout(timer);
             globalIsReady = true;
-            console.log(`[VeilPay SDK v${VEILPAY_SDK_VERSION}] SUCCESS: Engine Ready.`);
+            console.log(`[VeilPay SDK v${VEILPAY_SDK_VERSION}] SUCCESS: FHE Engine is Online.`);
             resolve();
         } catch (error: any) {
             clearTimeout(timer);
-            globalInitPromise = null; // Allow retry on failure
-            console.error(`[VeilPay SDK] Initialization ERROR:`, error);
-            reject(new VeilPayInitError(error.message || "Initialization Failed"));
+            globalInitPromise = null;
+            console.error(`[VeilPay SDK] FATAL ERROR during runtime init:`, error);
+            reject(new VeilPayInitError(error.message || "Runtime Initialization Failed"));
         }
     });
 
@@ -165,7 +146,7 @@ export class VeilPayCoFHE {
 
   async encryptAmount(amount: number, decimals: number = 6): Promise<CoFHEStruct> {
     if (!globalIsReady) await this.init();
-    if (!globalClient) throw new VeilPayEncryptionError("Engine Unavailable.");
+    if (!globalClient) throw new VeilPayEncryptionError("FHE Engine Offline.");
     const wei = BigInt(Math.floor(amount * Math.pow(10, decimals)));
     const result = await globalClient.encryptUint128(wei);
     return this.toStruct(result);
@@ -173,14 +154,14 @@ export class VeilPayCoFHE {
 
   async encryptAddress(address: string): Promise<CoFHEStruct> {
     if (!globalIsReady) await this.init();
-    if (!globalClient) throw new VeilPayEncryptionError("Engine Unavailable.");
+    if (!globalClient) throw new VeilPayEncryptionError("FHE Engine Offline.");
     const result = await globalClient.encryptAddress(address);
     return this.toStruct(result);
   }
 
   async generatePermit(contractAddress: string, provider: any): Promise<any> {
     if (!globalIsReady) await this.init();
-    if (!globalClient) throw new VeilPayEncryptionError("Engine Unavailable.");
+    if (!globalClient) throw new VeilPayEncryptionError("FHE Engine Offline.");
     try {
       return await globalClient.generatePermit(contractAddress, provider);
     } catch (error: any) {
@@ -200,17 +181,8 @@ export class VeilPayCoFHE {
 
   private toStruct(result: any): CoFHEStruct {
     if (!this.validateStruct(result)) {
-      throw new VeilPayEncryptionError("KMS returned an incomplete struct.");
+      throw new VeilPayEncryptionError("Incomplete KMS struct returned.");
     }
     return result as CoFHEStruct;
-  }
-
-  private getMemoryStorage() {
-    const memoryStorage: Record<string, string> = {};
-    return {
-      getItem: (key: string) => memoryStorage[key] || null,
-      setItem: (key: string, value: string) => { memoryStorage[key] = value; },
-      removeItem: (key: string) => { delete memoryStorage[key]; },
-    };
   }
 }
