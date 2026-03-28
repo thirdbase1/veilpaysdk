@@ -2,7 +2,7 @@
 
 **The Professional Fhenix CoFHE Integration Framework**
 
-VeilPay SDK is a production-ready TypeScript library for high-fidelity integration with **Fhenix Confidential Fully Homomorphic Encryption (CoFHE)**. It abstracts the complexities of KMS-backed encryption, HD wallet bridges, and asynchronous FHE verification, offering a stable and compliant foundation for private Web3 commerce.
+VeilPay SDK is a production-grade TypeScript library for high-fidelity integration with **Fhenix Confidential Fully Homomorphic Encryption (CoFHE)**. It abstracts the complexities of KMS-backed encryption, HD wallet bridges, and asynchronous FHE verification, offering a stable and compliant foundation for private Web3 commerce.
 
 ---
 
@@ -10,70 +10,69 @@ VeilPay SDK is a production-ready TypeScript library for high-fidelity integrati
 
 -   **🔒 State Privacy:** Automated construction of `InEuint128` and `InEaddress` structs for on-chain FHE computation (`FHE.gte`).
 -   **🏦 Professional Bridge:** Built-in **HD Wallet Derivation** for generating secure, one-time payment sub-addresses.
--   **⚡ Ultra-Lazy Initialization:** Side-effect free instantiation ensuring absolute stability during **Next.js Prerendering** and **SSR**.
+-   **🖱️ One-Click Payments:** Seamless frontend utility to trigger USDC transfers from a user's wallet to your bridge.
+-   **⚡ Ultra-Lazy Initialization:** Side-effect free instantiation ensuring absolute stability during **Next.js builds** and **SSR**.
 -   **🛡️ Build-Proof Gating:** Multi-signal environment detection prevents CoFHE engine crashes in restricted build workers (Vercel/CI).
 -   **⛽ Gas-Optimized UX:** Automatic polling and `staticCall` logic for detecting Fhenix Coprocessor results.
 
 ---
 
-## 🌐 Network Architecture (Mnemonic-First)
+## 🏗️ Professional Bridge Architecture
 
-VeilPay SDK utilizes a specialized network strategy for maximum reliability and simplified security. By using a Master Mnemonic, you eliminate the need to manage multiple raw private keys.
+VeilPay SDK supports a high-scale architecture designed for thousands of concurrent users.
 
-### Recommended Environment (.env)
-```bash
-# Frontend & Backend: CoFHE Engine Endpoint
-NEXT_PUBLIC_FHENIX_RPC_URL="https://api.sepolia.fhenix.zone"
-
-# Backend: Standard Sepolia Endpoint (Monitoring USDC transfers)
-SEPOLIA_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
-
-# Backend: Master Bridge Seed (Everything is derived from this)
-MASTER_BRIDGE_MNEMONIC="your twelve word seed phrase here"
-```
-
----
-
-## 🏗️ Professional Bridge Implementation
-
-To achieve 100% merchant privacy and reliable tracking, implement the **One-Time Sub-address** model.
-
-### 1. Backend: Generate Payment Address
-Derive a fresh address for every invoice using an incrementing index from your database.
+### 1. Backend: Scalable Address Generation
+Generate a unique sub-address for every invoice using a master mnemonic and a database counter.
 
 ```typescript
 import { VeilPayBridge } from 'veilpaysdk';
 
-// Derive unique address for index #5
-const subAddress = VeilPayBridge.deriveAddress(process.env.MASTER_BRIDGE_MNEMONIC, 5);
+// Derive sub-address for invoice #105
+const subAddress = VeilPayBridge.deriveAddress(process.env.MASTER_BRIDGE_MNEMONIC, 105);
+// Store in Supabase: { requestId, subAddress, index: 105 }
 ```
 
-### 2. Backend: Initialize Oracle Signer
-Derive your backend's signing authority from index 0 of your master seed.
+### 2. Frontend: One-Click Payment
+Let the SDK handle the complex USDC transfer logic.
 
 ```typescript
-import { VeilPayBridge, VeilPayContract } from 'veilpaysdk';
+const veilPay = new VeilPayContract(ADDR, ABI, userSigner);
+// The user just needs to click 'Confirm' in MetaMask
+await veilPay.payRequest(subAddress, 50.00);
+```
 
-const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
-const backendSigner = VeilPayBridge.createBridgeSigner(process.env.MASTER_BRIDGE_MNEMONIC, 0, provider);
+### 3. Backend: High-Performance Monitoring
+Instead of watching addresses individually, monitor the **USDC Transfer Event** globally. This is extremely fast and supports millions of users.
 
-const veilPay = new VeilPayContract(ADDR, ABI, backendSigner);
+```typescript
+const usdcContract = new ethers.Contract(USDC_ADDR, USDC_ABI, provider);
+
+// Watch ALL incoming USDC transfers
+usdcContract.on("Transfer", async (from, to, value) => {
+  // Check if 'to' matches a subAddress in your Supabase DB
+  const request = await supabase.from('requests').select().eq('sub_address', to).single();
+
+  if (request) {
+    // TRIGGER CONFIDENTIAL VERIFICATION
+    const veilPay = new VeilPayContract(ADDR, ABI, oracleSigner);
+    await veilPay.submitPayment(request.request_id, ethers.formatUnits(value, 6));
+  }
+});
 ```
 
 ---
 
 ## 📊 Professional Changelog (v1.7.0)
 
-### ✨ Stability & UX Updates
--   **Concurrent Init Lock:** Implemented a shared global promise to prevent re-initialization hangs in React Strict Mode.
--   **Initialization Watchdog:** 45-second timeout with descriptive Stage-by-Stage logging (1-3) in the browser console.
+### ✨ Feature Updates
+-   **One-Click Payment:** New `payRequest()` method for automated frontend USDC transfers.
+-   **HD Wallet Bridge:** Integrated `VeilPayBridge` for secure on-chain anonymity and identification.
 
-### 🛡️ Security Patches
--   **Mnemonic Integration:** Eliminated raw `BACKEND_PRIVATE_KEY` requirement in favor of secure HD Wallet derivation.
--   **Robust Storage Fallback:** Defensive try-catch wrapper for `localStorage` to support SSR and Incognito modes.
-
-### 🔧 Internal Fixes
+### 🛡️ Security & Stability
+-   **Concurrent Init Lock:** Global shared promise prevents re-initialization hangs in React.
 -   **Build Worker Isolation:** Physically gated `@cofhe/sdk` loading during Next.js static generation.
+-   **Mnemonic-Only Model:** Eliminated raw `BACKEND_PRIVATE_KEY` requirement for enhanced security.
+-   **Storage Fallback:** Try-catch wrapper for `localStorage` supporting SSR and Incognito modes.
 
 ---
 

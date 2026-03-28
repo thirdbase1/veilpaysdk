@@ -87,6 +87,39 @@ export class VeilPayContract {
     }
 
     /**
+     * Performs a one-click USDC payment for a specific request.
+     * Use this on the Frontend to send money from the User's wallet to the Bridge.
+     * @param subAddress The unique bridge sub-address for this request.
+     * @param amount The amount to pay (in units, e.g. 20.00).
+     * @param usdcAddress The Sepolia USDC contract address.
+     * @param overrides Optional transaction overrides.
+     */
+    async payRequest(
+        subAddress: string,
+        amount: number,
+        usdcAddress: string = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+        overrides: ethers.Overrides = {}
+    ): Promise<string> {
+        if (amount <= 0) throw new VeilPayValidationError("Amount must be greater than 0");
+
+        const usdcAbi = ["function transfer(address to, uint256 value) public returns (bool)"];
+        const usdcContract = new ethers.Contract(usdcAddress, usdcAbi, this.contract.runner as any);
+
+        const wei = ethers.parseUnits(amount.toString(), 6);
+
+        try {
+            console.log(`[VeilPay SDK] Preparing USDC transfer to bridge: ${subAddress}`);
+            const tx = await usdcContract.transfer(subAddress, wei, overrides);
+            const receipt = await tx.wait();
+            console.log(`[VeilPay SDK] One-click payment successful: ${receipt.hash}`);
+            return receipt.hash;
+        } catch (error: any) {
+            console.error("[VeilPay SDK] payRequest Error:", error);
+            throw new VeilPayContractError(`payRequest failed: ${error.message}`, error.hash);
+        }
+    }
+
+    /**
      * Submits an actual paid amount (USDC) from the Backend/Oracle.
      * @param requestId The request ID to pay
      * @param actualAmount The actual amount paid
