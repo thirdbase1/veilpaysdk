@@ -16,22 +16,19 @@ VeilPay SDK is a production-ready TypeScript library for high-fidelity integrati
 
 ---
 
-## 🌐 Network Architecture (Dual-RPC)
+## 🌐 Network Architecture (Mnemonic-First)
 
-VeilPay SDK utilizes a specialized network strategy for maximum reliability:
-
-1.  **CoFHE Engine (Fhenix):** Connects to the Fhenix KMS for encryption and cryptographic proofs.
-2.  **Blockchain Layer (Sepolia):** Connects to standard Ethereum Sepolia RPCs for signing transactions and monitoring USDC transfers.
+VeilPay SDK utilizes a specialized network strategy for maximum reliability and simplified security. By using a Master Mnemonic, you eliminate the need to manage multiple raw private keys.
 
 ### Recommended Environment (.env)
 ```bash
-# Frontend & Backend: CoFHE KMS Endpoint
+# Frontend & Backend: CoFHE Engine Endpoint
 NEXT_PUBLIC_FHENIX_RPC_URL="https://api.sepolia.fhenix.zone"
 
-# Backend: Standard Sepolia Endpoint (Transactions/Monitoring)
+# Backend: Standard Sepolia Endpoint (Monitoring USDC transfers)
 SEPOLIA_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
 
-# Backend: Master Bridge Seed (Never expose to Frontend!)
+# Backend: Master Bridge Seed (Everything is derived from this)
 MASTER_BRIDGE_MNEMONIC="your twelve word seed phrase here"
 ```
 
@@ -41,39 +38,26 @@ MASTER_BRIDGE_MNEMONIC="your twelve word seed phrase here"
 
 To achieve 100% merchant privacy and reliable tracking, implement the **One-Time Sub-address** model.
 
-### 1. Backend: Generate & Save (Supabase)
-Generate a fresh address for every invoice using an incrementing index from your database.
+### 1. Backend: Generate Payment Address
+Derive a fresh address for every invoice using an incrementing index from your database.
 
 ```typescript
 import { VeilPayBridge } from 'veilpaysdk';
 
-// 1. Get next index from your DB (e.g. 5)
+// Derive unique address for index #5
 const subAddress = VeilPayBridge.deriveAddress(process.env.MASTER_BRIDGE_MNEMONIC, 5);
-
-// 2. Save to Supabase: { requestId, subAddress, status: 'pending' }
 ```
 
-### 2. Frontend: Display Payment Info
-Show the user the unique sub-address and the Request ID.
-
-```tsx
-<div>
-  <p>Send USDC to: {subAddress}</p>
-  <p>Request ID: {requestId}</p>
-</div>
-```
-
-### 3. Backend: Oracle Verification
-Watch the Sepolia USDC contract for transfers to the generated sub-address.
+### 2. Backend: Initialize Oracle Signer
+Derive your backend's signing authority from index 0 of your master seed.
 
 ```typescript
-import { VeilPayContract } from 'veilpaysdk';
+import { VeilPayBridge, VeilPayContract } from 'veilpaysdk';
 
-// Detect USDC Transfer to subAddress...
-// Then verify via Fhenix:
-const veilPay = new VeilPayContract(ADDR, ABI, backendWallet);
-await veilPay.init();
-await veilPay.submitPayment(requestId, amountReceived);
+const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
+const backendSigner = VeilPayBridge.createBridgeSigner(process.env.MASTER_BRIDGE_MNEMONIC, 0, provider);
+
+const veilPay = new VeilPayContract(ADDR, ABI, backendSigner);
 ```
 
 ---
@@ -83,17 +67,18 @@ await veilPay.submitPayment(requestId, amountReceived);
 ### ✨ Stability & UX Updates
 -   **Concurrent Init Lock:** Implemented a shared global promise to prevent re-initialization hangs in React Strict Mode.
 -   **Initialization Watchdog:** 45-second timeout with descriptive Stage-by-Stage logging (1-3) in the browser console.
--   **Diagnostic Metadata:** New `getSDKMetadata()` method for debugging environment gating issues.
 
 ### 🛡️ Security Patches
--   **HD Wallet Bridge:** Integrated `VeilPayBridge` for secure on-chain anonymity and identification.
+-   **Mnemonic Integration:** Eliminated raw `BACKEND_PRIVATE_KEY` requirement in favor of secure HD Wallet derivation.
 -   **Robust Storage Fallback:** Defensive try-catch wrapper for `localStorage` to support SSR and Incognito modes.
 
 ### 🔧 Internal Fixes
 -   **Build Worker Isolation:** Physically gated `@cofhe/sdk` loading during Next.js static generation.
--   **Auto-RPC Prioritization:** Enhanced auto-detection to prioritize backend-only `FHENIX_RPC_URL`.
 
 ---
+
+## 🤝 Buildathon Support
+100% Compliant with **Fhenix AKINDO Buildathon Wave 1** requirements.
 
 ## 📜 License
 MIT
