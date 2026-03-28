@@ -7,31 +7,28 @@ Remove all manual imports of `@cofhe/sdk` and `fhenixjs` from the site's fronten
 
 ---
 
-### 1. UX & Network Performance (v1.6.0 Update)
+### 1. Build-Safe & Bulletproof (v1.7.0 Update)
 
-**❌ THE INITIALIZATION HANG:**
-Users reporting "Initializing..." hanging for 10+ minutes. This is usually caused by using the wrong RPC URL or a slow connection to the CoFHE KMS.
+**❌ THE PERSISTENT PROBLEM:**
+Next.js projects often crash during the `next build` (prerendering) phase with the error:
+`TypeError: Cannot read properties of undefined (reading 'fheKeyStorage')`
 
-**✅ THE v1.6.0 IMPROVEMENTS:**
-- **Double-RPC Architecture:** The SDK now explicitly handles two distinct networks:
-    1. **Fhenix RPC:** Used by the CoFHE engine for encryption/KMS.
-    2. **Sepolia RPC:** Used by Ethers/Wallet for standard transactions.
-- **Pre-flight Validation:** The SDK now checks for required environment variables **before** loading WASM, providing instant feedback if your `.env` is missing keys.
-- **Init Timeout:** Watchdog timer (45s) prevents UI hangs.
-- **Global Singleton:** Initialization happens exactly **once** per session.
+**✅ THE v1.7.0 FIX (Bulletproof):**
+`veilpaysdk` now implements **Execution Environment Gating**.
+- **Build Isolation:** The SDK uses multi-signal detection (Headers, NEXT_PHASE, and Global state) to detect a build worker. If detected, it **physically blocks** the loading of `@cofhe/sdk`.
+- **Dormant Mode:** During builds, `init()` resolves immediately but leaves the engine "dormant." It only activates in a real browser or live API environment.
+- **Concurrent-Safe:** Implements a global singleton promise to handle multiple React components calling `init()` simultaneously.
 
 ---
 
-### 2. Mandatory Environment Variables
-For the SDK to work end-to-end, ensure your `.env` (and Vercel settings) include these **exact** keys:
+### 2. Network Integration: The "Triple-Point" Configuration
+For a professional project, you need to manage three distinct connection points:
 
-| Variable | Scope | Purpose |
-| :--- | :--- | :--- |
-| `NEXT_PUBLIC_FHENIX_RPC_URL` | Frontend | Required for CoFHE KMS encryption in the browser. |
-| `FHENIX_RPC_URL` | Backend | Required for CoFHE KMS encryption in API routes. |
-| `BACKEND_PRIVATE_KEY` | Backend | Wallet used to sign `submitPayment` transactions. |
-
-**Recommended URL for both:** `https://api.sepolia.fhenix.zone`
+| Point | Key Variable | Value | Purpose |
+| :--- | :--- | :--- | :--- |
+| **CoFHE Engine** | `NEXT_PUBLIC_FHENIX_RPC_URL` | `https://api.sepolia.fhenix.zone` | Powers the KMS encryption (WASM). |
+| **Transactions** | `SEPOLIA_RPC_URL` | `https://ethereum-sepolia-rpc.publicnode.com` | Standard Sepolia RPC for signing and events. |
+| **USDC Contract** | *Internal SDK Constant* | `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` | The official Sepolia USDC bridge. |
 
 ---
 
@@ -42,12 +39,10 @@ import { useVeilPayCoFHE, VeilPayContract } from "veilpaysdk";
 
 export default function MyComponent() {
   const { sdk, isReady, error } = useVeilPayCoFHE({
-      network: "sepolia",
-      // SDK automatically uses NEXT_PUBLIC_FHENIX_RPC_URL if defined
-      rpcUrl: process.env.NEXT_PUBLIC_FHENIX_RPC_URL
+      network: "sepolia"
   });
 
-  if (error) return <div>FHE Error: {error}</div>;
+  if (error) return <div>FHE Initialization Failed: {error}</div>;
 
   const action = async () => {
     // Standard Sepolia Signer (e.g. from MetaMask)
@@ -66,16 +61,19 @@ export default function MyComponent() {
 import { VeilPayContract } from "veilpaysdk";
 
 export async function POST(req) {
-  const veilPay = new VeilPayContract(ADDR, ABI, wallet, {
-      rpcUrl: process.env.FHENIX_RPC_URL
-  });
-  await veilPay.init();
+  // Use SEPOLIA_RPC_URL for the provider
+  const provider = new ethers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL);
+  const wallet = new ethers.Wallet(process.env.BACKEND_PRIVATE_KEY, provider);
+
+  const veilPay = new VeilPayContract(ADDR, ABI, wallet);
+
+  await veilPay.init(); // Uses FHENIX_RPC_URL internally for encryption
   await veilPay.submitPayment(requestId, amount);
   const success = await veilPay.waitForResolution(requestId);
 }
 ```
 
 ### 🛠 INSTRUCTIONS FOR AI ASSISTANTS:
-1.  **Check** `.env` for `NEXT_PUBLIC_FHENIX_RPC_URL`.
-2.  **Verify** the user isn't using a standard Sepolia RPC for the `rpcUrl` config in the SDK. It **MUST** be a Fhenix-enabled RPC.
-3.  **Use** version 1.6.0 for the best UX.
+1.  **Delete** all manual storage mocks and `@cofhe/sdk` imports.
+2.  **Verify** `NEXT_PUBLIC_FHENIX_RPC_URL` is set to the correct Fhenix endpoint.
+3.  **Ensure** transactions are sent via a standard Sepolia RPC, while encryption uses the Fhenix RPC.

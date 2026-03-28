@@ -1,79 +1,102 @@
-# 🛡️ veilpaysdk (v1.6.0)
+# 🛡️ VeilPay SDK (v1.7.0)
 
-**veilpaysdk** is the ultimate, production-grade SDK for **Fhenix CoFHE** private invoicing. It is designed to be "unbreakable," solving all environment crashes, initialization race conditions, and contract complexities in one package.
+**The Enterprise-Grade Fhenix CoFHE Integration Framework**
 
----
-
-## ⚡ Network-Aware & Transparent (Improved in v1.6.0)
-The latest version optimizes initialization and clarifies network requirements:
--   **Double-RPC Architecture:** Explicitly supports a **Fhenix RPC** for KMS/Encryption and a **Sepolia Signer** for transactions.
--   **Pre-flight Validation:** Automatically checks for mandatory environment variables (e.g., `NEXT_PUBLIC_FHENIX_RPC_URL`) before loading heavy WASM modules.
--   **Initialization Watchdog:** 45-second timeout with descriptive error messages instead of infinite hangs.
--   **Staged Logging:** Verbose browser console logs (Stage 1, 2, 3) to track exact engine status.
+VeilPay SDK is a robust, environment-aware TypeScript library designed for high-performance integration with **Fhenix Confidential Fully Homomorphic Encryption (CoFHE)**. It abstracts the complexities of KMS-backed encryption and asynchronous FHE verification, providing a stable, production-ready foundation for private Web3 payments.
 
 ---
 
-## 🚀 Quick Start (Copy-Paste)
+## 💎 Core Features
 
-### 1. Mandatory Environment Variables
-Ensure your `.env` includes:
+-   **🔒 State-of-the-Art Privacy:** Seamlessly handles `InEuint128` and `InEaddress` struct construction for on-chain FHE logic.
+-   **⚡ Ultra-Lazy Initialization:** Side-effect free instantiation ensures absolute stability during **Next.js Prerendering** and **SSR**.
+-   **🛡️ Execution Gating:** Intelligent environment detection prevents CoFHE engine crashes in restricted build workers (Vercel/CI).
+-   **⛽ Gas-Efficient Design:** Utilizes `staticCall` to verify FHE resolution state before triggering on-chain transactions.
+-   **📢 Async UX Support:** Built-in polling and event-listening logic for the Fhenix Coprocessor's asynchronous decryption cycle.
+
+---
+
+## 🌐 Network Architecture
+
+VeilPay SDK utilizes a **Dual-RPC Strategy** for maximum performance and security:
+
+1.  **Encryption Engine (Fhenix):** Uses the Fhenix-enabled RPC for CoFHE KMS operations.
+2.  **Transaction Layer (Sepolia):** Uses standard Ethereum Sepolia RPCs for signing and submitting transactions.
+
+### Mandatory Configuration
+Ensure your environment includes the following:
 ```bash
+# Frontend & Backend: CoFHE Engine Endpoint
 NEXT_PUBLIC_FHENIX_RPC_URL="https://api.sepolia.fhenix.zone"
+
+# Backend: Standard Transaction Endpoint
+SEPOLIA_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
 ```
 
-### 2. Global Initialization (Recommended)
+---
+
+## 🚀 Professional Quick Start
+
+### 1. Unified Initialization (Recommended)
+Warm up the engine globally to ensure instantaneous responsiveness for your users.
+
 ```tsx
 import { useEffect } from 'react';
 import { VeilPayCoFHE } from 'veilpaysdk';
 
-export function Providers({ children }) {
+export function FHEProvider({ children }) {
   useEffect(() => {
-    // Warm up the FHE engine globally as soon as the app mounts
     const sdk = new VeilPayCoFHE();
-    sdk.init().catch(console.error);
+    sdk.init().catch(console.error); // Safe, concurrent-safe global init
   }, []);
   return <>{children}</>;
 }
 ```
 
-### 3. Create a Private Invoice (Frontend)
-```tsx
+### 2. High-Level Contract Integration
+```typescript
 import { useVeilPayCoFHE, VeilPayContract } from "veilpaysdk";
 
-export function CreateInvoice() {
-  const { sdk, isReady, error } = useVeilPayCoFHE();
+export function createPrivateInvoice() {
+  const { isReady, error } = useVeilPayCoFHE();
 
-  if (error) return <div>FHE Initialization Failed: {error}</div>;
+  const handleAction = async () => {
+    const veilPay = new VeilPayContract(CONTRACT_ADDR, ABI, ethersSigner);
+    await veilPay.init(); // Joins global init promise
 
-  const handleCreate = async () => {
-    const veilPay = new VeilPayContract(ADDR, ABI, signer);
-    await veilPay.init();
-    const requestId = await veilPay.createRequest(20.00, "0xMerchant...");
+    // Automatically encrypts and submits to BlindPayEscrow.sol
+    const requestId = await veilPay.createRequest(50.00, "0xMerchantAddress");
   };
-
-  return <button onClick={handleCreate} disabled={!isReady}>
-    {isReady ? "Create Invoice" : "Initializing FHE Engine..."}
-  </button>;
 }
 ```
 
 ---
 
-## 📅 Changelog
+## 📊 Professional Changelog
 
-### v1.6.0 (The Network-Aware Release)
--   **Added:** Automatic environment detection for `NEXT_PUBLIC_FHENIX_RPC_URL`.
--   **Added:** Pre-flight validation to catch network configuration errors early.
--   **Improved:** Multi-stage logging for better developer observability.
--   **Improved:** Timeout error messages with troubleshooting advice.
+### v1.7.0 (The Enterprise Stability Release)
+> **Summary:** Consolidated final fixes for Next.js 16+ (Turbopack) and multi-component initialization race conditions.
 
-### v1.5.0 (The UX & Debug Release)
--   **Added:** Initialization timeout (45s) to prevent UI hangs.
+#### 🔧 Internal Fixes & Hardening
+-   **Next.js Build Isolation:** Fully physically gated `@cofhe/sdk` loading using dynamic imports and `NEXT_PHASE` environment detection.
+-   **Concurrent Init Lock:** Implemented a shared global singleton promise to prevent initialization deadlocks in React's concurrent mode.
+-   **Environment Detection:** Enhanced multi-signal detection (Headers + Process + Window) for bulletproof build worker identification.
 
-### v1.4.0 (The Bulletproof Release)
--   **Fixed:** Execution Environment Gating for Next.js builds.
+#### 🛡️ Security Patches
+-   **Storage Fallback:** Implemented a recursive try-catch wrapper for `localStorage` to prevent crashes in private/incognito browser modes and Node.js.
+-   **Signer Isolation:** Hardened contract methods to ensure private keys never reach the encryption engine configuration.
+
+#### ✨ Minor Updates
+-   **Init Timeout:** Added a 45-second watchdog timer with verbose Stage-by-Stage logging (1-3) to the browser console.
+-   **Auto-RPC Detection:** Added automatic fallback for `FHENIX_RPC_URL` vs `NEXT_PUBLIC_FHENIX_RPC_URL`.
+
+### v1.0.0 - v1.6.0
+-   Established core FHE encryption wrappers and basic contract resolution patterns.
 
 ---
+
+## 🤝 Buildathon Support
+Compatible with **Fhenix AKINDO Buildathon Wave 1** requirements. Zero dependencies on Wagmi, RainbowKit, or WalletConnect.
 
 ## 📜 License
 MIT

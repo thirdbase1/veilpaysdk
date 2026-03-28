@@ -15,7 +15,7 @@ export interface VeilPayConfig {
 }
 
 // SDK METADATA
-export const VEILPAY_SDK_VERSION = "1.6.0";
+export const VEILPAY_SDK_VERSION = "1.7.0";
 
 // GLOBAL SINGLETON STATE
 let globalClient: any = null;
@@ -40,9 +40,10 @@ export class VeilPayCoFHE {
         this.config = config;
     }
 
-    // Auto-detect RPC from environment if not provided
+    // Auto-detect RPC from environment if not provided.
+    // We prioritize the backend-only FHENIX_RPC_URL for better performance/security on servers.
     if (!this.config.rpcUrl && typeof process !== 'undefined') {
-        this.config.rpcUrl = process.env.NEXT_PUBLIC_FHENIX_RPC_URL || process.env.FHENIX_RPC_URL;
+        this.config.rpcUrl = process.env.FHENIX_RPC_URL || process.env.NEXT_PUBLIC_FHENIX_RPC_URL;
     }
   }
 
