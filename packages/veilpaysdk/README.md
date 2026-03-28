@@ -20,69 +20,75 @@ Integrating Fhenix CoFHE manually is fragile. VeilPay SDK provides a "Bulletproo
 
 ---
 
-## 💎 Core Feature Set
+## 💎 Full API Reference
 
--   **🔒 Confidential State:** Automated construction of `InEuint128` and `InEaddress` structs for `FHE.gte` computations.
--   **🏦 Professional Bridge:** Securely derive millions of one-time payment addresses from a single **Master Mnemonic**.
--   **🖱️ One-Click Payments:** High-level utility (`payRequest`) to trigger automated USDC transfers from user wallets.
--   **⚡ Ultra-Lazy Global Init:** Side-effect free instantiation ensuring 100% stability in **Next.js 16 (Turbopack)** and **SSR**.
--   **🔍 Staged Debugging:** 4-Stage console logging (WASM -> Storage -> Client -> Engine) for transparent runtime monitoring.
+### 1. Core Cryptography (`VeilPayCoFHE`)
+The low-level engine for Fhenix encryption and environment management.
+-   **`init()`**: Asynchronous bootstrapper for WASM and KMS.
+-   **`getSDKMetadata()`**: Returns diagnostic data (version, build status, engine state).
+-   **`encryptAmount(number)`**: Translates a plaintext value into a confidential `InEuint128` struct.
+-   **`encryptAddress(string)`**: Translates a wallet address into a confidential `InEaddress` struct.
+-   **`generatePermit(address, provider)`**: Generates mandatory viewing authorization for encrypted data.
+
+### 2. Contract Integration (`VeilPayContract`)
+High-level wrapper for `BlindPayEscrow.sol` on Sepolia.
+-   **`createRequest(amount, merchant, expiry)`**: Encrypts parameters and triggers on-chain invoice creation.
+-   **`payRequest(subAddress, amount)`**: Automates a USDC transfer from the user's wallet to the bridge.
+-   **`submitPayment(requestId, amount)`**: (Oracle Only) Submits real payment data for FHE verification.
+-   **`waitForResolution(requestId)`**: Polling/Event utility that waits for the Fhenix Coprocessor result.
+-   **`getPaymentStatus(requestId)`**: Returns `{ expiry, isResolved, isPaid, isExpired }`.
+-   **`onPaymentResolved(requestId, callback)`**: Real-time event listener for FHE completion.
+
+### 3. Bridge Utilities (`VeilPayBridge`)
+Tools for implementing the high-privacy "Sub-address" model.
+-   **`deriveAddress(mnemonic, index)`**: Generates a unique, one-time payment address from a master seed.
+-   **`createBridgeSigner(mnemonic, index, provider)`**: Creates a signing wallet for specific sub-addresses.
+-   **`isValidMnemonic(phrase)`**: Robust Ethers v6 validation for seed phrases.
+
+### 4. Buildathon Hooks (React)
+Specialized hooks designed to satisfy AKINDO Wave 1 requirements.
+-   **`useVeilPayCoFHE()`**: Main hook for engine status (`sdk`, `isReady`, `error`).
+-   **`useEncrypt()`**: The "Translator" for converting inputs into FHE structs.
+-   **`useWrite(contract)`**: The "Messenger" for handling MetaMask transaction life-cycles.
+-   **`useDecrypt(contract)`**: The "Observer" for monitoring the asynchronous Coprocessor result.
 
 ---
 
-## 🚀 Unified Implementation Guide
+## 🚀 Professional Implementation Guide
 
-### 1. The Environment Setup (.env)
-VeilPay SDK is zero-config for Fhenix Sepolia. Just provide your Master Mnemonic and standard RPCs.
-
-```bash
-# Mandatory for browser/server encryption
-NEXT_PUBLIC_FHENIX_RPC_URL="https://api.sepolia.fhenix.zone"
-NEXT_PUBLIC_FHENIX_KMS_URL="https://kms.sepolia.fhenix.zone"
-
-# Mandatory for backend transactions
-SEPOLIA_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
-MASTER_BRIDGE_MNEMONIC="your secret twelve word phrase here"
-```
-
-### 2. Frontend: One-Click Invoice Settlement
-Satisfy judges with the mandatory Fhenix React hooks.
-
+### A. The Merchant: Creating an Invoice (Frontend)
 ```tsx
-import { useEncrypt, useWrite, VeilPayContract } from 'veilpaysdk';
+const { encrypt, isReady } = useEncrypt();
+const { write, isSubmitting } = useWrite(blindPayContract);
 
-export function PayInvoice({ subAddress, amount }) {
-  const { encrypt, isReady } = useEncrypt();
-  const { write, isSubmitting } = useWrite(contractInstance);
+const handleCreate = async () => {
+  // 1. Encrypt sensitive data locally
+  const encAmount = await encrypt(25.00, 'uint128');
+  const encMerchant = await encrypt(myWallet, 'address');
 
-  const handlePay = async () => {
-    const veilPay = new VeilPayContract(ADDR, ABI, signer);
-    // 1. One-click USDC transfer to bridge
-    await veilPay.payRequest(subAddress, amount);
-
-    // 2. FHE Verification (handled by Backend Oracle)
-  };
-
-  return <button onClick={handlePay} disabled={!isReady}>Confirm Payment</button>;
-}
+  // 2. Submit to Fhenix (Blockchain)
+  await write('createRequest', [encAmount, encMerchant, 86400]);
+};
 ```
 
-### 3. Backend: Scalable Oracle Verification
-Monitor all incoming USDC transfers in parallel without performance loss.
+### B. The Payer: One-Click Settlement (Frontend)
+```tsx
+const veilPay = new VeilPayContract(ADDR, ABI, signer);
 
+const handlePay = async () => {
+  // Prepare and sign USDC transfer to the specific sub-address
+  await veilPay.payRequest(derivedSubAddress, 25.00);
+};
+```
+
+### C. The Oracle: Background Verification (Backend)
+Watch ALL USDC transfers globally and match them against your sub-address database.
 ```typescript
-import { VeilPayBridge, VeilPayContract } from 'veilpaysdk';
-
-// Derive the Oracle Signer from index 0
-const oracleSigner = VeilPayBridge.createBridgeSigner(process.env.MASTER_BRIDGE_MNEMONIC, 0, provider);
-
-// Monitor USDC Transfer Event globally
-usdcContract.on("Transfer", async (from, to, value) => {
-  // recipient 'to' matches a derived sub-address in your Supabase DB
-  if (isSubAddress(to)) {
-     const veilPay = new VeilPayContract(ADDR, ABI, oracleSigner);
-     await veilPay.submitPayment(requestId, ethers.formatUnits(value, 6));
-  }
+const usdc = new ethers.Contract(USDC_ADDR, USDC_ABI, provider);
+usdc.on("Transfer", async (from, to, value) => {
+  // recipients matching your DB sub-addresses trigger verification:
+  const veilPay = new VeilPayContract(ADDR, ABI, oracleSigner);
+  await veilPay.submitPayment(requestId, ethers.formatUnits(value, 6));
 });
 ```
 
@@ -91,18 +97,17 @@ usdcContract.on("Transfer", async (from, to, value) => {
 ## 📊 Ultimate Changelog (v1.8.0)
 
 ### 🛡️ Critical Stability Patches
--   **Definitive Storage Fix:** Re-engineered the internal storage engine with a nested Proxy-fallback to permanently eliminate the `fheKeyStorage` undefined error in all JS runtimes.
--   **Turbo Build Isolation:** Enhanced environment detection for Next.js 16 (Turbopack) to prevent build-time crashes.
+-   **Definitive Storage Fix:** Re-engineered internal storage with a nested Proxy-fallback to permanently eliminate `fheKeyStorage` undefined errors.
+-   **Turbo Build Isolation:** Enhanced environment detection for **Next.js 16 (Turbopack)** build safety.
 
 ### ✨ Performance & UX
--   **Transparent Booting:** Introduced 4-stage browser console tracing to provide 100% visibility into the WASM/KMS handshake.
--   **Shared Init Promise:** Hardened the global singleton to prevent re-initialization hangs in React's concurrent mode.
-
-### 🔧 Feature Updates
--   **One-Click Pay Logic:** Fully integrated USDC transfer preparation into the contract wrapper.
--   **Infrastructure Auto-Detection:** Seamlessly inherits KMS and RPC URLs from environment variables.
+-   **Micro-Step Debugging:** Introduced Stage 1-4 console tracing for transparent WASM/KMS monitoring.
+-   **Shared Init Promise:** Hardened global singleton logic to prevent initialization hangs.
 
 ---
+
+## 🤝 Buildathon Support
+100% Compliant with **Fhenix AKINDO Buildathon Wave 1** requirements. Zero dependencies on Wagmi or RainbowKit.
 
 ## 📜 License
 MIT
