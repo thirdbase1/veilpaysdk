@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
-import { VeilPayCoFHE } from './core';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { VeilPayCoFHE, VeilPayConfig } from './core';
 
 export interface UseVeilPayResult {
     sdk: VeilPayCoFHE | null;
@@ -7,15 +7,57 @@ export interface UseVeilPayResult {
     error: string | null;
 }
 
+// ------------------------------------------------------------------
+// GLOBAL CONTEXT FOR THE SDK
+// ------------------------------------------------------------------
+const VeilPayContext = createContext<UseVeilPayResult | undefined>(undefined);
+
 /**
- * PRODUCTION-GRADE React Hook for VeilPay CoFHE
- * Main entry point for initializing the FHE engine.
+ * THE VEILPAY PROVIDER (The "Master Wrapper")
+ * Wrap your entire app in this to handle ALL heavy lifting automatically.
+ */
+export function VeilPayProvider({ children, config }: { children: React.ReactNode, config?: VeilPayConfig }) {
+    const sdkInstance = useMemo(() => new VeilPayCoFHE(config || 'sepolia'), [config]);
+    const [state, setState] = useState<UseVeilPayResult>({ sdk: sdkInstance, isReady: false, error: null });
+
+    useEffect(() => {
+        let isMounted = true;
+        const autoInit = async () => {
+            try {
+                await sdkInstance.init();
+                if (isMounted) setState(prev => ({ ...prev, isReady: true }));
+            } catch (err: any) {
+                if (isMounted) setState(prev => ({ ...prev, error: err.message || "Boot failed" }));
+            }
+        };
+        autoInit();
+        return () => { isMounted = false; };
+    }, [sdkInstance]);
+
+    return (
+        <VeilPayContext.Provider value={state}>
+            {children}
+        </VeilPayContext.Provider>
+    );
+}
+
+/**
+ * THE MASTER HOOK: useVeilPay
+ * Your site just calls this one hook to get EVERYTHING.
+ */
+export function useVeilPay() {
+    const context = useContext(VeilPayContext);
+    if (!context) throw new Error("useVeilPay must be used within a VeilPayProvider");
+    return context;
+}
+
+/**
+ * LEGACY COMPATIBILITY HOOK: useVeilPayCoFHE
  */
 export function useVeilPayCoFHE(config: any = 'sepolia'): UseVeilPayResult {
     const [sdk, setSdk] = useState<VeilPayCoFHE | null>(null);
     const [isReady, setIsReady] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
     const sdkInstance = useMemo(() => new VeilPayCoFHE(config), [config]);
 
     useEffect(() => {
@@ -23,14 +65,9 @@ export function useVeilPayCoFHE(config: any = 'sepolia'): UseVeilPayResult {
         const initSdk = async () => {
             try {
                 await sdkInstance.init();
-                if (isMounted) {
-                    setSdk(sdkInstance);
-                    setIsReady(true);
-                }
+                if (isMounted) { setSdk(sdkInstance); setIsReady(true); }
             } catch (err: any) {
-                if (isMounted) {
-                    setError(err.message || "Initialization failed.");
-                }
+                if (isMounted) setError(err.message || "Initialization failed.");
             }
         };
         initSdk();
@@ -42,18 +79,17 @@ export function useVeilPayCoFHE(config: any = 'sepolia'): UseVeilPayResult {
 
 /**
  * BUILDATHON HOOK: useEncrypt (The Translator)
- * Translates plaintext amounts into confidential structs.
  */
 export function useEncrypt() {
-    const { sdk, isReady, error } = useVeilPayCoFHE();
+    const { sdk, isReady, error } = useVeilPay();
 
     const encrypt = async (value: any, type: 'uint128' | 'address') => {
         if (error) throw new Error(`FHE Offline: ${error}`);
-        if (!sdk || !isReady) throw new Error("CoFHE Engine not ready yet...");
+        if (!sdk || !isReady) throw new Error("SDK Warming Up...");
 
         if (type === 'uint128') return await sdk.encryptAmount(Number(value));
         if (type === 'address') return await sdk.encryptAddress(String(value));
-        throw new Error("Unsupported encryption type");
+        throw new Error("Unsupported type");
     };
 
     return { encrypt, isReady, error };
@@ -61,7 +97,6 @@ export function useEncrypt() {
 
 /**
  * BUILDATHON HOOK: useWrite (The Messenger)
- * Handles the contract submission and MetaMask lifecycle.
  */
 export function useWrite(contract: any) {
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -71,10 +106,8 @@ export function useWrite(contract: any) {
         setIsSubmitting(true);
         setError(null);
         try {
-            console.log(`[VeilPay SDK] Preparing transaction: ${methodName}...`);
             const tx = await contract[methodName](...args);
-            const receipt = await tx.wait();
-            return receipt;
+            return await tx.wait();
         } catch (err: any) {
             setError(err.message);
             throw err;
@@ -88,7 +121,6 @@ export function useWrite(contract: any) {
 
 /**
  * BUILDATHON HOOK: useDecrypt (The Observer)
- * Monitors the Fhenix Coprocessor for the async result.
  */
 export function useDecrypt(veilPayContract: any) {
     const [isDecrypting, setIsDecrypting] = useState(false);

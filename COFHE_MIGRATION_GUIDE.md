@@ -7,21 +7,50 @@ Remove all manual imports of `@cofhe/sdk` and `fhenixjs` from the site's fronten
 
 ---
 
-### 1. Build-Safe & Runtime-Bulletproof (v1.8.0 Update)
+### 1. The "Master Wrapper" Pattern (v1.8.0 Update)
+Your site should no longer handle initialization or complex FHE math manually. v1.8.0 introduces the **"Managed Framework"** approach.
 
-**❌ THE PERSISTENT PROBLEM:**
-Next.js projects often crash during `next build` or hang in the browser due to `fheKeyStorage` undefined errors.
-
-**✅ THE v1.8.0 FIX (The Definitive Solution):**
-`veilpaysdk` now implements **Execution Environment Gating** and a **Proxy-Storage Fallback**.
-- **Build Isolation:** Physically blocks `@cofhe/sdk` from loading in Vercel build workers.
-- **Unbreakable Storage:** A new internal storage engine ensures that `@cofhe/sdk` never sees an `undefined` storage property, even in restricted browser modes.
-- **Turbopack Support:** Optimized for Next.js 16 and high-speed build pipelines.
+**✅ THE v1.8.0 ADVANTAGE:**
+- **Unbreakable Build:** Physically gated to prevent crashes during Vercel builds.
+- **Invisible Storage:** Zero-crash proxy mapping ensures stability in all browser modes.
+- **Managed Lifecycle:** One provider handles global state, WASM initialization, and error recovery.
 
 ---
 
-### 2. Triple-Point Network Configuration
-To align with Buildathon requirements and ensure 100% stability, provide these variables:
+### 2. Frontend Setup: The Master Provider
+Wrap your entire app in the `VeilPayProvider` to give the SDK the "heavy work."
+
+```tsx
+// 1. In layout.tsx
+import { VeilPayProvider } from 'veilpaysdk';
+
+export default function Layout({ children }) {
+  return (
+    <VeilPayProvider config={{ network: "sepolia" }}>
+      {children}
+    </VeilPayProvider>
+  );
+}
+
+// 2. In your components (The simple hook)
+const { sdk, isReady, error } = useVeilPay();
+```
+
+---
+
+### 3. Professional One-Click Payment Flow
+Replace manual USDC transfer code with the optimized SDK method.
+
+**Frontend Implementation:**
+```typescript
+const veilPay = new VeilPayContract(ADDR, ABI, userSigner);
+// Automatically prepares and signs USDC transfer to the specific sub-address
+await veilPay.payRequest(subAddress, 50.00);
+```
+
+---
+
+### 4. Simple Configuration: Environment Variables
 
 | Variable | Recommended Value | Purpose |
 | :--- | :--- | :--- |
@@ -32,19 +61,9 @@ To align with Buildathon requirements and ensure 100% stability, provide these v
 
 ---
 
-### 3. Professional One-Click Payment Flow
-Replace manual USDC transfer code with the optimized SDK method.
-
-**Frontend Implementation:**
-```typescript
-const veilPay = new VeilPayContract(ADDR, ABI, signer);
-await veilPay.payRequest(subAddress, amount); // Automated USDC transfer
-```
-
----
-
 ### 🛠 INSTRUCTIONS FOR AI ASSISTANTS:
 1.  **Delete** all manual storage mocks and `@cofhe/sdk` imports.
-2.  **Use** the `VeilPayBridge` and `payRequest` methods for all invoicing logic.
-3.  **Check** for `error` from the hooks to prevent UI hangs.
-4.  **Force Update:** If you see errors, purge Vercel cache and redeploy to ensure v1.8.0 is active.
+2.  **Use** the `VeilPayProvider` for global state management.
+3.  **Use** `VeilPayContract.processPayment()` for backend decision logic.
+4.  **Use** `VeilPayBridge.verifyUsdcTransfer()` for backend Oracle monitoring.
+5.  **Redeploy** with `pnpm update veilpaysdk` to ensure v1.8.0 is active.

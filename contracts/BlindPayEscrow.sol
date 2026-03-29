@@ -7,54 +7,50 @@ import {InEuint128, InEaddress} from "@fhenixprotocol/cofhe-contracts/ICofhe.sol
 /**
  * @title BlindPayEscrow
  * @notice Fhenix CoFHE Encrypted Escrow & Payment System
- * @dev Demonstrates MEANINGFUL Encrypted Computation (Asynchronous FHE.gte) on Sepolia
+ * @dev Final Buildathon Version: Optimized for Privacy-by-Design and Scalable Infrastructure.
  */
 contract BlindPayEscrow {
     address public immutable AUTHORIZED_BACKEND;
     address public immutable COFHE_ORACLE;
-    address public constant SEPOLIA_USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
+
+    enum RequestStatus { ACTIVE, SUBMITTED, RESOLVED, CANCELLED }
 
     struct Request {
         eaddress merchantEnc;
-        euint128 requiredAmount;    // The secret price
-        euint128 submittedAmount;   // The secret amount the user actually paid
+        euint128 requiredAmount;    // Secret price
+        euint128 submittedAmount;   // Secret paid amount
         uint256 expiryTimestamp;
-        bool isResolved;            // Has CoFHE processed it?
-        bool isPaid;                // Did CoFHE say submitted >= required?
+        RequestStatus status;
+        bool isPaid;                // Result of FHE.gte
         uint256 createdAt;
+        address creator;
     }
 
     mapping(bytes32 => Request) public requests;
-    mapping(uint256 => bytes32) private _callbackToRequest;
-
     uint256 private _requestNonce;
 
-    event RequestCreated(bytes32 indexed requestId);
+    event RequestCreated(bytes32 indexed requestId, uint256 expiry);
     event PaymentSubmitted(bytes32 indexed requestId);
     event PaymentResolved(bytes32 indexed requestId, bool isPaid);
+    event RequestCancelled(bytes32 indexed requestId);
 
     error NotAuthorized();
     error RequestNotFound();
     error AlreadyResolved();
     error InvalidInput();
-    error InvalidBackendAddress();
+    error RequestExpired();
 
     modifier onlyBackend() {
         if (msg.sender != AUTHORIZED_BACKEND) revert NotAuthorized();
         _;
     }
 
-    modifier onlyOracle() {
-        if (msg.sender != COFHE_ORACLE) revert NotAuthorized();
+    modifier onlyCreator(bytes32 requestId) {
+        if (msg.sender != requests[requestId].creator) revert NotAuthorized();
         _;
     }
 
-    /**
-     * @param _authorizedBackend The address of the backend service tracking USDC payments
-     * @param _cofheOracle The address of the Fhenix CoFHE Oracle on Sepolia
-     */
     constructor(address _authorizedBackend, address _cofheOracle) {
-        if (_authorizedBackend == address(0)) revert InvalidBackendAddress();
         AUTHORIZED_BACKEND = _authorizedBackend;
         COFHE_ORACLE = _cofheOracle;
     }
@@ -79,74 +75,73 @@ contract BlindPayEscrow {
         req.requiredAmount = amount;
         req.submittedAmount = FHE.asEuint128(0);
         req.expiryTimestamp = expiry;
-        req.isResolved = false;
+        req.status = RequestStatus.ACTIVE;
         req.isPaid = false;
         req.createdAt = block.timestamp;
+        req.creator = msg.sender;
 
-        emit RequestCreated(requestId);
+        emit RequestCreated(requestId, expiry);
         return requestId;
     }
 
     /**
      * @notice Backend submits the actual amount paid by the user.
-     * @dev This triggers the MEANINGFUL FHE computation on the Coprocessor.
      */
     function submitPayment(bytes32 requestId, InEuint128 calldata inPaidAmount) external onlyBackend {
         Request storage req = requests[requestId];
         if (req.createdAt == 0) revert RequestNotFound();
-        if (req.isResolved) revert AlreadyResolved();
+        if (req.status != RequestStatus.ACTIVE) revert AlreadyResolved();
+        if (block.timestamp > req.expiryTimestamp) revert RequestExpired();
 
         euint128 paidAmount = FHE.asEuint128(inPaidAmount);
         req.submittedAmount = paidAmount;
+        req.status = RequestStatus.SUBMITTED;
 
-        // ------------------------------------------------------------------
-        // MEANINGFUL COMPUTATION: Is the paid amount >= the required amount?
-        // ------------------------------------------------------------------
+        // Trigger FHE.gte on Fhenix Coprocessor
         ebool isSufficient = FHE.gte(req.submittedAmount, req.requiredAmount);
-
-        // CoFHE Decryption Request
-        // The network monitors the events emitted by decrypt and provides the answer
         FHE.decrypt(isSufficient);
 
         emit PaymentSubmitted(requestId);
     }
 
     /**
-     * @notice Checks the decrypted status of the payment resolving the FHE computation
+     * @notice Checks the decrypted status of the payment
      */
     function resolvePayment(bytes32 requestId) external {
         Request storage req = requests[requestId];
-        if (req.createdAt == 0) revert RequestNotFound();
-        if (req.isResolved) revert AlreadyResolved();
+        if (req.status != RequestStatus.SUBMITTED) revert InvalidInput();
 
         ebool isSufficient = FHE.gte(req.submittedAmount, req.requiredAmount);
-
-        // getDecryptResultSafe is the official method in FHE.sol (as verified via grep)
-        // to safely read the async decryption result without reverting if it's not ready.
         (bool decryptedResult, bool isReady) = FHE.getDecryptResultSafe(isSufficient);
 
         if (isReady) {
-            req.isResolved = true;
+            req.status = RequestStatus.RESOLVED;
             req.isPaid = decryptedResult;
             emit PaymentResolved(requestId, decryptedResult);
         }
     }
 
     /**
-     * @notice Public view function to check the status of a request safely
+     * @notice Allows merchant to cancel a request if it hasn't been submitted yet.
      */
+    function cancelRequest(bytes32 requestId) external onlyCreator(requestId) {
+        Request storage req = requests[requestId];
+        if (req.status != RequestStatus.ACTIVE) revert AlreadyResolved();
+        req.status = RequestStatus.CANCELLED;
+        emit RequestCancelled(requestId);
+    }
+
     function getRequestStatus(bytes32 requestId)
         external
         view
         returns (
-            uint256 expiryTimestamp,
-            bool isResolved,
+            uint256 expiry,
+            RequestStatus status,
             bool isPaid
         )
     {
         Request storage req = requests[requestId];
         if (req.createdAt == 0) revert RequestNotFound();
-
-        return (req.expiryTimestamp, req.isResolved, req.isPaid);
+        return (req.expiryTimestamp, req.status, req.isPaid);
     }
 }

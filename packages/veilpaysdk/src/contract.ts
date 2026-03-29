@@ -156,13 +156,27 @@ export class VeilPayContract {
      * Returns the full status of a payment request.
      */
     async getPaymentStatus(requestId: string) {
-        const [expiry, isResolved, isPaid] = await this.contract.getRequestStatus(requestId);
+        const [expiry, status, isPaid] = await this.contract.getRequestStatus(requestId);
         return {
             expiry: Number(expiry),
-            isResolved,
+            status: Number(status), // 0: ACTIVE, 1: SUBMITTED, 2: RESOLVED, 3: CANCELLED
             isPaid,
+            isResolved: Number(status) === 2,
             isExpired: Number(expiry) < Math.floor(Date.now() / 1000)
         };
+    }
+
+    /**
+     * Allows a merchant to cancel an active request.
+     */
+    async cancelRequest(requestId: string, overrides: ethers.Overrides = {}): Promise<string> {
+        try {
+            const tx = await this.contract.cancelRequest(requestId, overrides);
+            const receipt = await tx.wait();
+            return receipt.hash;
+        } catch (error: any) {
+            throw new VeilPayContractError(`cancelRequest failed: ${error.message}`);
+        }
     }
 
     /**
@@ -268,6 +282,41 @@ export class VeilPayContract {
         this.contract.on(filter, (id) => {
             callback();
         });
+    }
+
+    /**
+     * THE DECISION ENGINE: processIncomingPayment
+     * This is the "Brain" of your backend. Call this when USDC hits a sub-address.
+     *
+     * @param receivedAmount The amount detected on-chain (units).
+     * @param requiredAmount The amount stored in your DB (units).
+     * @param expiryTimestamp The expiry stored in your DB.
+     * @returns A structured decision for your backend to execute.
+     */
+    processPayment(receivedAmount: number, requiredAmount: number, expiryTimestamp: number) {
+        const now = Math.floor(Date.now() / 1000);
+
+        if (now > expiryTimestamp) {
+            return {
+                status: "EXPIRED",
+                action: "REFUND",
+                reason: "Payment received after deadline."
+            };
+        }
+
+        if (receivedAmount < requiredAmount) {
+            return {
+                status: "PARTIAL",
+                action: "WAIT_OR_REFUND",
+                reason: `Insufficient funds. Received ${receivedAmount}, need ${requiredAmount}.`
+            };
+        }
+
+        return {
+            status: "COMPLETED",
+            action: "SUBMIT_TO_FHENIX",
+            reason: "Payment sufficient."
+        };
     }
 
     /**

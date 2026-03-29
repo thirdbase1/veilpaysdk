@@ -23,7 +23,6 @@ export const parseAmount = (amount: string, decimals: number = 6): bigint => {
 
 /**
  * Returns a shortened version of an Ethereum address.
- * e.g., 0x1234...5678
  */
 export const shortenAddress = (address: string, chars: number = 4): string => {
     if (!isAddress(address)) return address;
@@ -31,16 +30,11 @@ export const shortenAddress = (address: string, chars: number = 4): string => {
 };
 
 /**
- * PRODUCTION-GRADE BRIDGE UTILITY (v1.7.0)
- *
- * Handles Hierarchical Deterministic (HD) wallet derivation for
- * one-time payment sub-addresses.
+ * PRODUCTION-GRADE BRIDGE UTILITY (v1.8.0)
  */
 export class VeilPayBridge {
     /**
      * Derives a unique one-time payment address from a master mnemonic.
-     * @param mnemonic The master seed phrase (keep this secret in .env!)
-     * @param index The unique index for this request (e.g., from your database)
      */
     static deriveAddress(mnemonic: string, index: number): string {
         const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic);
@@ -50,12 +44,35 @@ export class VeilPayBridge {
 
     /**
      * Creates a signer for a specific derived sub-address.
-     * Use this in your backend to sweep funds from the bridge to the merchant.
      */
     static createBridgeSigner(mnemonic: string, index: number, provider: ethers.Provider): ethers.Wallet {
         const wallet = ethers.HDNodeWallet.fromPhrase(mnemonic);
         const derived = wallet.derivePath(`m/44'/60'/0'/0/${index}`);
         return new ethers.Wallet(derived.privateKey, provider);
+    }
+
+    /**
+     * Validates a transaction hash for a USDC transfer to a specific sub-address.
+     * @param txHash The transaction to verify.
+     * @param subAddress The expected recipient.
+     * @param provider Standard Sepolia Provider.
+     */
+    static async verifyUsdcTransfer(txHash: string, subAddress: string, provider: ethers.Provider): Promise<bigint | null> {
+        const receipt = await provider.getTransactionReceipt(txHash);
+        if (!receipt || receipt.status === 0) return null;
+
+        const usdcAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+        const transferTopic = ethers.id("Transfer(address,address,uint256)");
+
+        for (const log of receipt.logs) {
+            if (log.address.toLowerCase() === usdcAddress.toLowerCase() && log.topics[0] === transferTopic) {
+                const to = ethers.getAddress("0x" + log.topics[2].slice(26));
+                if (to.toLowerCase() === subAddress.toLowerCase()) {
+                    return ethers.toBigInt(log.data);
+                }
+            }
+        }
+        return null;
     }
 
     /**

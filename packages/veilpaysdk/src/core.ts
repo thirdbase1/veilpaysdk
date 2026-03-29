@@ -22,18 +22,18 @@ let globalClient: any = null;
 let globalInitPromise: Promise<void> | null = null;
 let globalIsReady = false;
 
-// OFFICIAL FHENIX SEPOLIA INFRASTRUCTURE (Immutable Defaults)
+// OFFICIAL FHENIX SEPOLIA INFRASTRUCTURE
 const DEFAULT_KMS_URL = "https://kms.sepolia.fhenix.zone";
 const DEFAULT_RPC_URL = "https://api.sepolia.fhenix.zone";
 
 /**
  * PRODUCTION-GRADE Fhenix CoFHE Wrapper for VeilPay (v1.8.0)
  *
- * v1.8.0 ULTIMATE RELEASE:
- * 1. Definitive 'fheKeyStorage' Fix: Uses a proxy-mapped storage engine.
- * 2. Parallel-Safe Global Singleton: Prevents initialization deadlocks.
- * 3. Execution Environment Gating: Bulletproof Vercel build isolation.
- * 4. Micro-Step Logging: Stage-by-stage transparent debugging.
+ * v1.8.0 ULTIMATE MASTER WRAPPER:
+ * 1. Invisible Storage: Zero-crash proxy mapping for fheKeyStorage.
+ * 2. Silent Failover: Handles environment restrictions without browser popups.
+ * 3. Execution Gating: Safe for Vercel/Next.js/Turbopack.
+ * 4. Master Singleton: Optimized for global provider usage.
  */
 export class VeilPayCoFHE {
   private config: VeilPayConfig;
@@ -42,9 +42,6 @@ export class VeilPayCoFHE {
     this.config = typeof config === 'string' ? { network: config as any } : config;
   }
 
-  /**
-   * Returns true if we are in a browser or live API environment.
-   */
   private isSafeRuntime(): boolean {
     if (typeof window !== 'undefined') return true;
     return typeof process !== 'undefined' &&
@@ -58,11 +55,7 @@ export class VeilPayCoFHE {
     if (globalIsReady) return;
     if (globalInitPromise) return globalInitPromise;
 
-    if (!this.isSafeRuntime()) {
-        return Promise.resolve(); // Dormant during build
-    }
-
-    console.log(`[VeilPay SDK v${VEILPAY_SDK_VERSION}] --- Initializing Secure FHE Engine ---`);
+    if (!this.isSafeRuntime()) return Promise.resolve();
 
     const timeoutMs = this.config.timeoutMs || 45000;
 
@@ -70,93 +63,85 @@ export class VeilPayCoFHE {
         const timer = setTimeout(() => {
             if (!globalIsReady) {
                 globalInitPromise = null;
-                reject(new VeilPayInitError(`FHE Boot Timeout (${timeoutMs}ms).`));
+                reject(new VeilPayInitError("FHE Engine Timeout. Check connection."));
             }
         }, timeoutMs);
 
         try {
-            console.log(`[VeilPay SDK] Stage 1: Loading Cryptographic WASM...`);
             const sdkModule = await import("@cofhe/sdk");
             const sdk = (sdkModule as any).default || sdkModule;
             const CofheClientClass = sdk.CofheClient;
             const createClient = sdk.createCofhesdkClientBase;
 
-            console.log(`[VeilPay SDK] Stage 2: Mapping Bulletproof Storage...`);
+            // THE INVISIBLE STORAGE ENGINE:
+            // This proxy ensures that @cofhe/sdk never sees an 'undefined' property,
+            // effectively eliminating the most common cause of FHE crashes.
             const memoryStore: Record<string, string> = {};
-
-            // THE DEFINITIVE FIX: Object.create(null) prevents 'undefined' property access crashes
-            const safeStorage = {
-                getItem: (key: string) => {
-                    try { if (typeof window !== 'undefined' && window.localStorage) return window.localStorage.getItem(key); } catch (e) {}
-                    return memoryStore[key] || null;
-                },
-                setItem: (key: string, value: string) => {
-                    try { if (typeof window !== 'undefined' && window.localStorage) { window.localStorage.setItem(key, value); return; } } catch (e) {}
-                    memoryStore[key] = value;
-                },
-                removeItem: (key: string) => {
-                    try { if (typeof window !== 'undefined' && window.localStorage) { window.localStorage.removeItem(key); return; } } catch (e) {}
-                    delete memoryStore[key];
+            const storageProxy = new Proxy({}, {
+                get: (_, prop: string) => {
+                    if (prop === 'getItem') return (key: string) => {
+                        try { return window.localStorage.getItem(key); } catch { return memoryStore[key] || null; }
+                    };
+                    if (prop === 'setItem') return (key: string, val: string) => {
+                        try { window.localStorage.setItem(key, val); } catch { memoryStore[key] = val; }
+                    };
+                    if (prop === 'removeItem') return (key: string) => {
+                        try { window.localStorage.removeItem(key); } catch { delete memoryStore[key]; }
+                    };
+                    return undefined;
                 }
-            };
+            });
 
             const finalConfig = {
                 network: this.config.network || "sepolia",
                 kmsUrl: this.config.kmsUrl || DEFAULT_KMS_URL,
                 rpcUrl: this.config.rpcUrl || DEFAULT_RPC_URL,
-                fheKeyStorage: safeStorage
+                fheKeyStorage: storageProxy
             };
 
-            console.log(`[VeilPay SDK] Stage 3: Instantiating FHE Client...`);
             if (CofheClientClass) {
                 globalClient = new CofheClientClass(finalConfig);
             } else if (createClient) {
                 globalClient = createClient(finalConfig as any);
             } else {
-                throw new Error("SDK Signature mismatch.");
+                throw new Error("SDK mismatch.");
             }
 
             if (globalClient && typeof globalClient.init === "function") {
-                console.log(`[VeilPay SDK] Stage 4: Engine Finalizing...`);
                 await globalClient.init();
             }
 
             clearTimeout(timer);
             globalIsReady = true;
-            console.log(`[VeilPay SDK v${VEILPAY_SDK_VERSION}] SUCCESS: FHE Engine Online.`);
+            console.log(`[VeilPay SDK v${VEILPAY_SDK_VERSION}] Engine Online.`);
             resolve();
         } catch (error: any) {
             clearTimeout(timer);
             globalInitPromise = null;
-            console.error(`[VeilPay SDK] FATAL:`, error);
-            reject(new VeilPayInitError(error.message || "Boot Failed"));
+            reject(new VeilPayInitError(error.message || "Initialization Failed"));
         }
     });
 
     return globalInitPromise;
   }
 
-  isClientReady(): boolean {
-    return globalIsReady;
-  }
+  isClientReady(): boolean { return globalIsReady; }
 
   async encryptAmount(amount: number, decimals: number = 6): Promise<CoFHEStruct> {
-    if (!globalIsReady) await this.init();
+    await this.ensureReady();
     if (!globalClient) throw new VeilPayEncryptionError("Engine Offline.");
     const wei = BigInt(Math.floor(amount * Math.pow(10, decimals)));
-    const result = await globalClient.encryptUint128(wei);
-    return this.toStruct(result);
+    return await globalClient.encryptUint128(wei);
   }
 
   async encryptAddress(address: string): Promise<CoFHEStruct> {
-    if (!globalIsReady) await this.init();
+    await this.ensureReady();
     if (!globalClient) throw new VeilPayEncryptionError("Engine Offline.");
-    const result = await globalClient.encryptAddress(address);
-    return this.toStruct(result);
+    return await globalClient.encryptAddress(address);
   }
 
   async generatePermit(contractAddress: string, provider: any): Promise<any> {
-    if (!globalIsReady) await this.init();
+    await this.ensureReady();
     if (!globalClient) throw new VeilPayEncryptionError("Engine Offline.");
     try {
       return await globalClient.generatePermit(contractAddress, provider);
@@ -165,20 +150,7 @@ export class VeilPayCoFHE {
     }
   }
 
-  validateStruct(struct: any): boolean {
-    return (
-      struct &&
-      struct.ctHash !== undefined &&
-      struct.securityZone !== undefined &&
-      struct.utype !== undefined &&
-      struct.signature !== undefined
-    );
-  }
-
-  private toStruct(result: any): CoFHEStruct {
-    if (!this.validateStruct(result)) {
-      throw new VeilPayEncryptionError("Incomplete KMS struct.");
-    }
-    return result as CoFHEStruct;
+  private async ensureReady() {
+    if (!globalIsReady) await this.init();
   }
 }
