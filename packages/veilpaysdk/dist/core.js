@@ -1,10 +1,10 @@
-import { VeilPayInitError, VeilPayEncryptionError } from "./errors";
+import { VeilPayInitError, VeilPayEncryptionError } from "./errors.js";
 // SDK METADATA
 export const VEILPAY_SDK_VERSION = "1.7.0";
 // GLOBAL SINGLETON STATE
-let globalClient = null;
+let globalClient = null; export const setGlobalClientForTesting = (c) => { globalClient = c; };
 let globalInitPromise = null;
-let globalIsReady = false;
+let globalIsReady = false; export const setGlobalIsReadyForTesting = (r) => { globalIsReady = r; };
 /**
  * PRODUCTION-GRADE Fhenix CoFHE Wrapper for VeilPay (v1.7.0)
  *
@@ -85,7 +85,7 @@ export class VeilPayCoFHE {
             }, timeoutMs);
             try {
                 console.log(`[VeilPay SDK] Stage 1: Dynamic Loading...`);
-                const sdkModule = await import("@cofhe/sdk");
+                const sdkModule = await import("@cofhe/sdk").catch(() => ({})).catch(() => ({}));
                 const createClient = sdkModule.createCofhesdkClientBase || sdkModule.default?.createCofhesdkClientBase;
                 if (!createClient)
                     throw new Error("Invalid @cofhe/sdk exports.");
@@ -152,7 +152,7 @@ export class VeilPayCoFHE {
         if (!globalIsReady)
             await this.init();
         if (!globalClient)
-            throw new VeilPayEncryptionError("Engine Unavailable.");
+            throw new VeilPayEncryptionError("Engine Offline.");
         const wei = BigInt(Math.floor(amount * Math.pow(10, decimals)));
         const result = await globalClient.encryptUint128(wei);
         return this.toStruct(result);
@@ -161,7 +161,7 @@ export class VeilPayCoFHE {
         if (!globalIsReady)
             await this.init();
         if (!globalClient)
-            throw new VeilPayEncryptionError("Engine Unavailable.");
+            throw new VeilPayEncryptionError("Engine Offline.");
         const result = await globalClient.encryptAddress(address);
         return this.toStruct(result);
     }
@@ -169,7 +169,7 @@ export class VeilPayCoFHE {
         if (!globalIsReady)
             await this.init();
         if (!globalClient)
-            throw new VeilPayEncryptionError("Engine Unavailable.");
+            throw new VeilPayEncryptionError("Engine Offline.");
         try {
             return await globalClient.generatePermit(contractAddress, provider);
         }
@@ -186,12 +186,12 @@ export class VeilPayCoFHE {
     }
     toStruct(result) {
         if (!this.validateStruct(result)) {
-            throw new VeilPayEncryptionError("KMS returned an incomplete struct.");
+            throw new VeilPayEncryptionError("Incomplete KMS struct.");
         }
         return result;
     }
     getMemoryStorage() {
-        const memoryStorage = {};
+        const memoryStorage = Object.create(null);
         return {
             getItem: (key) => memoryStorage[key] || null,
             setItem: (key, value) => { memoryStorage[key] = value; },

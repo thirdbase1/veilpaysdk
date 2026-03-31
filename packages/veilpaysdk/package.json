@@ -21,6 +21,7 @@
     "@types/node": "^20.0.0"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "node --test --experimental-strip-types src/core.test.ts"
   }
 }

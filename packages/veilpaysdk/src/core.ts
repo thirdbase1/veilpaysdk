@@ -22,6 +22,14 @@ let globalClient: any = null;
 let globalInitPromise: Promise<void> | null = null;
 let globalIsReady = false;
 
+export const setGlobalClientForTesting = (client: any) => {
+  globalClient = client;
+};
+
+export const setGlobalIsReadyForTesting = (isReady: boolean) => {
+  globalIsReady = isReady;
+};
+
 // OFFICIAL FHENIX SEPOLIA INFRASTRUCTURE (Immutable Defaults)
 const DEFAULT_KMS_URL = "https://kms.sepolia.fhenix.zone";
 const DEFAULT_RPC_URL = "https://api.sepolia.fhenix.zone";
@@ -82,7 +90,7 @@ export class VeilPayCoFHE {
             const createClient = sdk.createCofhesdkClientBase;
 
             console.log(`[VeilPay SDK] Stage 2: Mapping Bulletproof Storage...`);
-            const memoryStore: Record<string, string> = {};
+            const memoryStore: Record<string, string> = Object.create(null);
 
             // THE DEFINITIVE FIX: Object.create(null) prevents 'undefined' property access crashes
             const safeStorage = {

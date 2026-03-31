@@ -56,6 +56,29 @@ Specialized hooks designed to satisfy AKINDO Wave 1 requirements.
 
 ## 🚀 Professional Implementation Guide
 
+### Quick Start: Blind Escrow Integration (v1.8.0)
+VeilPay SDK includes a high-level `VeilPayContract` wrapper specifically designed for the **BlindPay Escrow** system.
+
+```typescript
+import { VeilPayContract } from 'veilpaysdk';
+import BlindPayEscrowABI from './BlindPayEscrowABI.json';
+
+const escrow = new VeilPayContract(
+  "0xYOUR_CONTRACT_ADDRESS",
+  BlindPayEscrowABI,
+  signerOrProvider
+);
+
+// 1. Initialize the FHE Engine
+await escrow.init();
+
+// 2. Create a Request (Merchant)
+const requestId = await escrow.createRequest(50.00, merchantAddress);
+
+// 3. Check Status
+const status = await escrow.getPaymentStatus(requestId);
+```
+
 ### A. The Merchant: Creating an Invoice (Frontend)
 ```tsx
 const { encrypt, isReady } = useEncrypt();

@@ -2,8 +2,10 @@
  * BASE ERROR CLASS FOR VEILPAY SDK
  */
 export class VeilPayError extends Error {
-    constructor(message: string, public code: string) {
+    public code: string;
+    constructor(message: string, code: string) {
         super(`[VeilPay SDK] ${message}`);
+        this.code = code;
         this.name = 'VeilPayError';
     }
 }
@@ -35,8 +37,10 @@ export class VeilPayEncryptionError extends VeilPayError {
  * Thrown when an ethers transaction or call fails.
  */
 export class VeilPayContractError extends VeilPayError {
-    constructor(message: string, public txHash?: string) {
+    public txHash?: string;
+    constructor(message: string, txHash?: string) {
         super(message, 'CONTRACT_FAILURE');
+        this.txHash = txHash;
         this.name = 'VeilPayContractError';
     }
 }
